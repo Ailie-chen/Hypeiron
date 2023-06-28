@@ -465,52 +465,52 @@ uint16_t history_table_get(uint32_t cpu, uint32_t latency,
 }
 
 
-// uint16_t history_table_pages_get(uint32_t cpu, uint32_t latency, 
-//         uint64_t act_addr,
-//         uint64_t addr[HISTORY_TABLE_WAY*HISTORY_TABLE_SET], 
-//         uint64_t cycle)
-// {
+uint16_t history_table_pages_get(uint32_t cpu, uint32_t latency, 
+        uint64_t act_addr,
+        uint64_t addr[HISTORY_TABLE_WAY*HISTORY_TABLE_SET], 
+        uint64_t cycle)
+{
     
-//     act_addr &= ADDR_MASK;
-//     uint16_t cur_addr = (act_addr >> LOG2_BLOCKS_PER_PAGE);
+    act_addr &= ADDR_MASK;
+    uint16_t cur_addr = (act_addr >> LOG2_BLOCKS_PER_PAGE);
 
-//     uint16_t num_on_time = 0;
+    uint16_t num_on_time = 0;
 
-//     // The IPs that is launch in this cycle will be able to launch this prefetch
-//     if (cycle < latency) return num_on_time;
-//     cycle -= latency; 
+    // The IPs that is launch in this cycle will be able to launch this prefetch
+    if (cycle < latency) return num_on_time;
+    cycle -= latency; 
 
-//     // Pointer to guide
-//     for(int idx_his = 0; idx_his < HISTORY_TABLE_SET ; idx_his++)
-//     {
-//         history_table_t *pointer = history_pointers[cpu][idx_his];
-//         do
-//         {
-//             // Look for the IPs that can launch this prefetch
-//             if (pointer->time <= cycle)
-//             {
-//                 uint64_t his_addr = ((pointer->addr)>>LOG2_BLOCKS_PER_PAGE);
-//                 if (his_addr == cur_addr)
-//                 {
-//                     for (int i = 0; i < num_on_time; i++)
-//                     {
-//                         if (pointer->addr == addr[i]) continue;
-//                     }
-//                     addr[num_on_time] = pointer->addr;
-//                     num_on_time++;
-//                 }
-//             }
+    // Pointer to guide
+    for(int idx_his = 0; idx_his < HISTORY_TABLE_SET ; idx_his++)
+    {
+        history_table_t *pointer = history_pointers[cpu][idx_his];
+        do
+        {
+            // Look for the IPs that can launch this prefetch
+            if (pointer->time <= cycle)
+            {
+                uint64_t his_addr = ((pointer->addr)>>LOG2_BLOCKS_PER_PAGE);
+                if (his_addr == cur_addr)
+                {
+                    for (int i = 0; i < num_on_time; i++)
+                    {
+                        if (pointer->addr == addr[i]) continue;
+                    }
+                    addr[num_on_time] = pointer->addr;
+                    num_on_time++;
+                }
+            }
 
-//             if (pointer == historyt[cpu][idx_his])
-//             {
-//                 pointer = &historyt[cpu][idx_his][HISTORY_TABLE_WAY - 1];
-//             } else pointer--;
-//         } while (pointer != history_pointers[cpu][idx_his]);
-//     }
-//     return num_on_time;
+            if (pointer == historyt[cpu][idx_his])
+            {
+                pointer = &historyt[cpu][idx_his][HISTORY_TABLE_WAY - 1];
+            } else pointer--;
+        } while (pointer != history_pointers[cpu][idx_his]);
+    }
+    return num_on_time;
 
-//     // We found on-time prefetchs
-// }
+    // We found on-time prefetchs
+}
 
 
 /******************************************************************************/
@@ -548,36 +548,36 @@ void vberti_increase_conf_ip(uint64_t tag, uint32_t cpu)
     }
 }
 
-// void pages_berti_increase_conf_ip(uint64_t page_addr, uint32_t cpu)
-// {
-//     if (pages_bertit[cpu].find(page_addr) == pages_bertit[cpu].end()) return;
+void pages_berti_increase_conf_ip(uint64_t page_addr, uint32_t cpu)
+{
+    if (pages_bertit[cpu].find(page_addr) == pages_bertit[cpu].end()) return;
 
-//     pages_berti_t *tmp = pages_bertit[cpu][page_addr];
-//     stride_t *aux = tmp->stride;
+    pages_berti_t *tmp = pages_bertit[cpu][page_addr];
+    stride_t *aux = tmp->stride;
 
-//     tmp->conf += CONFIDENCE_INC;
+    tmp->conf += CONFIDENCE_INC;
 
-//     if (tmp->conf == CONFIDENCE_MAX) 
-//     {
+    if (tmp->conf == CONFIDENCE_MAX) 
+    {
 
-//         // Max confidence achieve
-//         for(int i = 0; i < BERTI_TABLE_STRIDE_SIZE; i++)
-//         {
-//             float temp = (float) aux[i].conf / (float) tmp->conf;
-//             uint64_t aux_conf   = (uint64_t) (temp * 100);
+        // Max confidence achieve
+        for(int i = 0; i < BERTI_TABLE_STRIDE_SIZE; i++)
+        {
+            float temp = (float) aux[i].conf / (float) tmp->conf;
+            uint64_t aux_conf   = (uint64_t) (temp * 100);
 
-//             // Set bits
-//             if (aux_conf > CONFIDENCE_L1) aux[i].rpl = L1;
-//             else if (aux_conf > CONFIDENCE_L2) aux[i].rpl = L2;
-//             else if (aux_conf > CONFIDENCE_L2R) aux[i].rpl = L2R;
-//             else aux[i].rpl = R;
+            // Set bits
+            if (aux_conf > CONFIDENCE_L1) aux[i].rpl = L1;
+            else if (aux_conf > CONFIDENCE_L2) aux[i].rpl = L2;
+            else if (aux_conf > CONFIDENCE_L2R) aux[i].rpl = L2R;
+            else aux[i].rpl = R;
             
-//             aux[i].conf = 0;
-//         }
+            aux[i].conf = 0;
+        }
 
-//         tmp->conf = 0;
-//     }
-// }
+        tmp->conf = 0;
+    }
+}
 
 
 void vberti_table_add(uint64_t tag, uint32_t cpu, int64_t stride)
@@ -682,107 +682,107 @@ void vberti_table_add(uint64_t tag, uint32_t cpu, int64_t stride)
     }
 }
 
-// void pages_berti_table_add(uint64_t page_addr, uint32_t cpu, int64_t stride)
-// {
-//     /*
-//      * Save the new information into the history table
-//      *
-//      * Parameters:
-//      *  - tag: PC tag
-//      *  - cpu: actual cpu
-//      *  - stride: actual cpu
-//      */
-//     if (pages_bertit[cpu].find(page_addr) == pages_bertit[cpu].end())
-//     {
-//         // FIFO MAP
-//         if (pages_bertit_queue[cpu].size() > BERTI_TABLE_SIZE)
-//         {
-//             uint64_t key = pages_bertit_queue[cpu].front();
-//             pages_berti_t *tmp = pages_bertit[cpu][key];
-//             delete tmp->stride;
-//             delete tmp;
-//             pages_bertit[cpu].erase(pages_bertit_queue[cpu].front());
-//             pages_bertit_queue[cpu].pop();
-//         }
-//         pages_bertit_queue[cpu].push(page_addr);
+void pages_berti_table_add(uint64_t page_addr, uint32_t cpu, int64_t stride)
+{
+    /*
+     * Save the new information into the history table
+     *
+     * Parameters:
+     *  - tag: PC tag
+     *  - cpu: actual cpu
+     *  - stride: actual cpu
+     */
+    if (pages_bertit[cpu].find(page_addr) == pages_bertit[cpu].end())
+    {
+        // FIFO MAP
+        if (pages_bertit_queue[cpu].size() > BERTI_TABLE_SIZE)
+        {
+            uint64_t key = pages_bertit_queue[cpu].front();
+            pages_berti_t *tmp = pages_bertit[cpu][key];
+            delete tmp->stride;
+            delete tmp;
+            pages_bertit[cpu].erase(pages_bertit_queue[cpu].front());
+            pages_bertit_queue[cpu].pop();
+        }
+        pages_bertit_queue[cpu].push(page_addr);
 
-//         assert(pages_bertit[cpu].size() <= BERTI_TABLE_SIZE);
+        assert(pages_bertit[cpu].size() <= BERTI_TABLE_SIZE);
 
-//         pages_berti_t *tmp = new pages_berti_t;
-//         tmp->stride = new stride_t[BERTI_TABLE_STRIDE_SIZE]();
+        pages_berti_t *tmp = new pages_berti_t;
+        tmp->stride = new stride_t[BERTI_TABLE_STRIDE_SIZE]();
         
-//         // Confidence IP
-//         tmp->conf = CONFIDENCE_INC;
+        // Confidence IP
+        tmp->conf = CONFIDENCE_INC;
 
-//         // Create new stride
-//         tmp->stride[0].stride = stride;
-//         tmp->stride[0].conf = CONFIDENCE_INIT;
-//         tmp->stride[0].rpl = R;
+        // Create new stride
+        tmp->stride[0].stride = stride;
+        tmp->stride[0].conf = CONFIDENCE_INIT;
+        tmp->stride[0].rpl = R;
 
-//         // Save value
-//         pages_bertit[cpu].insert(make_pair(page_addr, tmp));
-//         return;
-//     }
+        // Save value
+        pages_bertit[cpu].insert(make_pair(page_addr, tmp));
+        return;
+    }
 
-//     pages_berti_t *tmp = pages_bertit[cpu][page_addr];
-//     stride_t *aux = tmp->stride;
+    pages_berti_t *tmp = pages_bertit[cpu][page_addr];
+    stride_t *aux = tmp->stride;
 
-//     // Increase IP confidence
-//     uint8_t max = 0;
+    // Increase IP confidence
+    uint8_t max = 0;
 
-//     for (int i = 0; i < BERTI_TABLE_STRIDE_SIZE; i++)
-//     {
-//         if (aux[i].stride == stride)
-//         {
-//             aux[i].conf += CONFIDENCE_INC;
-//             if (aux[i].conf > CONFIDENCE_MAX) aux[i].conf = CONFIDENCE_MAX;
-//             return;
-//         }
-//     }
+    for (int i = 0; i < BERTI_TABLE_STRIDE_SIZE; i++)
+    {
+        if (aux[i].stride == stride)
+        {
+            aux[i].conf += CONFIDENCE_INC;
+            if (aux[i].conf > CONFIDENCE_MAX) aux[i].conf = CONFIDENCE_MAX;
+            return;
+        }
+    }
 
-//     uint8_t dx_conf = 100;
-//     int dx_remove = -1;
-//     for (int i = 0; i < BERTI_TABLE_STRIDE_SIZE; i++)
-//     {
-//         if (aux[i].rpl == R && aux[i].conf < dx_conf)
-//         {
-//             dx_conf = aux[i].conf;
-//             dx_remove = i;
-//         }
-//     }
+    uint8_t dx_conf = 100;
+    int dx_remove = -1;
+    for (int i = 0; i < BERTI_TABLE_STRIDE_SIZE; i++)
+    {
+        if (aux[i].rpl == R && aux[i].conf < dx_conf)
+        {
+            dx_conf = aux[i].conf;
+            dx_remove = i;
+        }
+    }
 
-//     if (dx_remove > -1)
-//     {
-//         tmp->stride[dx_remove].stride = stride;
-//         tmp->stride[dx_remove].conf   = CONFIDENCE_INIT;
-//         tmp->stride[dx_remove].rpl    = R;
-//         return;
-//     } else
-//     {
-//         for (int i = 0; i < BERTI_TABLE_STRIDE_SIZE; i++)
-//         {
-//             if (aux[i].rpl == L2R && aux[i].conf < dx_conf)
-//             {
-//                 dx_conf = aux[i].conf;
-//                 dx_remove = i;
-//             }
-//             //if (aux[i].rpl == L2R)
-//             //{
-//             //    tmp->stride[i].stride = stride;
-//             //    tmp->stride[i].conf   = CONFIDENCE_INIT;
-//             //    tmp->stride[i].rpl    = R;
-//             //    return;
-//             //}
-//         }
-//         if (dx_remove > -1)
-//         {
-//             tmp->stride[dx_remove].stride = stride;
-//             tmp->stride[dx_remove].conf   = CONFIDENCE_INIT;
-//             tmp->stride[dx_remove].rpl    = R;
-//             return;
-//         }
-//     }
-// }
+    if (dx_remove > -1)
+    {
+        tmp->stride[dx_remove].stride = stride;
+        tmp->stride[dx_remove].conf   = CONFIDENCE_INIT;
+        tmp->stride[dx_remove].rpl    = R;
+        return;
+    } else
+    {
+        for (int i = 0; i < BERTI_TABLE_STRIDE_SIZE; i++)
+        {
+            if (aux[i].rpl == L2R && aux[i].conf < dx_conf)
+            {
+                dx_conf = aux[i].conf;
+                dx_remove = i;
+            }
+            //if (aux[i].rpl == L2R)
+            //{
+            //    tmp->stride[i].stride = stride;
+            //    tmp->stride[i].conf   = CONFIDENCE_INIT;
+            //    tmp->stride[i].rpl    = R;
+            //    return;
+            //}
+        }
+        if (dx_remove > -1)
+        {
+            tmp->stride[dx_remove].stride = stride;
+            tmp->stride[dx_remove].conf   = CONFIDENCE_INIT;
+            tmp->stride[dx_remove].rpl    = R;
+            return;
+        }
+    }
+}
 
 uint8_t vberti_table_get(uint64_t tag, uint32_t cpu, stride_t res[MAX_PF])
 {
@@ -846,66 +846,66 @@ uint8_t vberti_table_get(uint64_t tag, uint32_t cpu, stride_t res[MAX_PF])
 }
 
 
-// uint8_t pages_berti_table_get(uint64_t page_addr, uint32_t cpu, stride_t res[MAX_PF])
-// {
-//     /*
-//      * Save the new information into the history table
-//      *
-//      * Parameters:
-//      *  - tag: PC tag
-//      *  - cpu: actual cpu
-//      *
-//      * Return: the stride to prefetch
-//      */
-//     if (!pages_bertit[cpu].count(page_addr)) return 0;
+uint8_t pages_berti_table_get(uint64_t page_addr, uint32_t cpu, stride_t res[MAX_PF])
+{
+    /*
+     * Save the new information into the history table
+     *
+     * Parameters:
+     *  - tag: PC tag
+     *  - cpu: actual cpu
+     *
+     * Return: the stride to prefetch
+     */
+    if (!pages_bertit[cpu].count(page_addr)) return 0;
 
-//     pages_berti_t *tmp = pages_bertit[cpu][page_addr];
-//     stride_t *aux = tmp->stride;
-//     uint64_t max_conf = 0;
-//     uint16_t dx = 0;
+    pages_berti_t *tmp = pages_bertit[cpu][page_addr];
+    stride_t *aux = tmp->stride;
+    uint64_t max_conf = 0;
+    uint16_t dx = 0;
     
-//     for (int i = 0; i < BERTI_TABLE_STRIDE_SIZE; i++)
-//     {
-//         if (aux[i].stride != 0 && aux[i].rpl)
-//         {
-//             // Substitue min confidence for the next one
-//             res[dx].stride = aux[i].stride;
-//             res[dx].rpl = aux[i].rpl;
-//             dx++;
-//         }
-//     }
+    for (int i = 0; i < BERTI_TABLE_STRIDE_SIZE; i++)
+    {
+        if (aux[i].stride != 0 && aux[i].rpl)
+        {
+            // Substitue min confidence for the next one
+            res[dx].stride = aux[i].stride;
+            res[dx].rpl = aux[i].rpl;
+            dx++;
+        }
+    }
 
-//     if (dx == 0 && tmp->conf >= LANZAR_INT)
-//     {
-//         for (int i = 0; i < BERTI_TABLE_STRIDE_SIZE; i++)
-//         {
-//             if (aux[i].stride != 0)
-//             {
-//                 // Substitue min confidence for the next one
-//                 res[dx].stride = aux[i].stride;
-//                 float temp = (float) aux[i].conf / (float) tmp->conf;
-//                 uint64_t aux_conf   = (uint64_t) (temp * 100);
-//                 res[dx].per = aux_conf;
-//                 dx++;
-//             }
-//         }
-//         sort(res, res + MAX_PF, compare_greater_stride_t_per);
+    if (dx == 0 && tmp->conf >= LANZAR_INT)
+    {
+        for (int i = 0; i < BERTI_TABLE_STRIDE_SIZE; i++)
+        {
+            if (aux[i].stride != 0)
+            {
+                // Substitue min confidence for the next one
+                res[dx].stride = aux[i].stride;
+                float temp = (float) aux[i].conf / (float) tmp->conf;
+                uint64_t aux_conf   = (uint64_t) (temp * 100);
+                res[dx].per = aux_conf;
+                dx++;
+            }
+        }
+        sort(res, res + MAX_PF, compare_greater_stride_t_per);
 
-//         for (int i = 0; i < MAX_PF; i++)
-//         {
-//             if (res[i].per > 80) res[i].rpl = L1;
-//             else if (res[i].per > 35) res[i].rpl = L2;
-//             //if (res[i].per > 80) res[i].rpl = L2;
-//             else res[i].rpl = R;
-//         }
-//         sort(res, res + MAX_PF, compare_greater_stride_t);
-//         return 1;
-//     }
+        for (int i = 0; i < MAX_PF; i++)
+        {
+            if (res[i].per > 80) res[i].rpl = L1;
+            else if (res[i].per > 35) res[i].rpl = L2;
+            //if (res[i].per > 80) res[i].rpl = L2;
+            else res[i].rpl = R;
+        }
+        sort(res, res + MAX_PF, compare_greater_stride_t);
+        return 1;
+    }
 
-//     sort(res, res + MAX_PF, compare_greater_stride_t);
+    sort(res, res + MAX_PF, compare_greater_stride_t);
 
-//     return 1;
-// }
+    return 1;
+}
 void find_and_update(uint32_t cpu, uint64_t latency, uint64_t tag, 
         uint64_t cycle, uint64_t line_addr)
 { 
@@ -913,36 +913,35 @@ void find_and_update(uint32_t cpu, uint64_t latency, uint64_t tag,
     uint64_t ip[HISTORY_TABLE_WAY];
     uint64_t addr[HISTORY_TABLE_WAY];
     uint16_t num_on_time = 0;
-    // uint16_t pages_num_on_time = 0;
-    // uint64_t pages_addr[HISTORY_TABLE_SET*HISTORY_TABLE_WAY];
+    uint16_t pages_num_on_time = 0;
+    uint64_t pages_addr[HISTORY_TABLE_SET*HISTORY_TABLE_WAY];
 
     // Get the IPs that can launch a prefetch
     num_on_time = history_table_get(cpu, latency, tag, line_addr, ip, addr, cycle);
-    // pages_num_on_time = history_table_pages_get(cpu, latency, line_addr, pages_addr, cycle);
+     pages_num_on_time = history_table_pages_get(cpu, latency, line_addr, pages_addr, cycle);
 
-    // //access cache的时候还是需要更新pages_bertit的，只不过是在预取的时候，如果没有ip匹配的，那就使用pages_bertit
-    // for(uint32_t i = 0; i < pages_num_on_time ; i++)
-    // {
-    //     if(i == 0) pages_berti_increase_conf_ip((line_addr>>LOG2_BLOCKS_PER_PAGE),cpu);
-    //     if (i >= MAX_HISTORY_IP) break;
+    //access cache的时候还是需要更新pages_bertit的，只不过是在预取的时候，如果没有ip匹配的，那就使用pages_bertit
+    for(uint32_t i = 0; i < pages_num_on_time ; i++)
+    {
+        if(i == 0) pages_berti_increase_conf_ip((line_addr>>LOG2_BLOCKS_PER_PAGE),cpu);
+        if (i >= MAX_HISTORY_IP) break;
 
-    //     // Add information into berti table
-    //     int64_t stride;
-    //     //line_addr &= ADDR_MASK;
+        // Add information into berti table
+        int64_t stride;
+        //line_addr &= ADDR_MASK;
 
-    //     // Usually applications go from lower to higher memory position.
-    //     // The operation order is important (mainly because we allow
-    //     // negative strides)
-    //     stride = (int64_t) ((ADDR_MASK&line_addr)- pages_addr[i]);
+        // Usually applications go from lower to higher memory position.
+        // The operation order is important (mainly because we allow
+        // negative strides)
+        stride = (int64_t) ((ADDR_MASK&line_addr)- pages_addr[i]);
 
-    //     if ((std::abs(stride) < (1 << STRIDE_MASK)))
-    //     {
-    //         // Only useful strides
-    //         pages_berti_table_add((line_addr>>LOG2_BLOCKS_PER_PAGE), cpu, stride);
-    //     }
-    // }
+        if ((std::abs(stride) < (1 << STRIDE_MASK)))
+        {
+            // Only useful strides
+            pages_berti_table_add((line_addr>>LOG2_BLOCKS_PER_PAGE), cpu, stride);
+        }
+    }
 
-    //vberti_increase_conf_ip(tag, cpu);
     
     for (uint32_t i = 0; i < num_on_time; i++)
     {
@@ -1032,52 +1031,54 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
 
     
         int launched = 0;
-        if(!vberti_table_get(ip, cpu, stride)) return;
-            // launched = 0;
-            // if (!pages_berti_table_get((line_addr>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) return;
-            // else
-            // {
-            //     launched = 0;
-            //     for (int i = 0; i < MAX_PF_LAUNCH; i++)
-            //     {
-            //         uint64_t p_addr = (line_addr + stride[i].stride) << LOG2_BLOCK_SIZE;
-            //         uint64_t p_b_addr = (p_addr >> LOG2_BLOCK_SIZE);
+        if(!vberti_table_get(ip, cpu, stride))
+        {
+            launched = 0;
+            if (!pages_berti_table_get((line_addr>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) return;
+            else
+            {
+                launched = 0;
+                for (int i = 0; i < MAX_PF_LAUNCH; i++)
+                {
+                    uint64_t p_addr = (line_addr + stride[i].stride) << LOG2_BLOCK_SIZE;
+                    uint64_t p_b_addr = (p_addr >> LOG2_BLOCK_SIZE);
 
-            //         if (!latency_table_get(p_addr, cpu))
-            //         {
+                    if (!latency_table_get(p_addr, cpu))
+                    {
 
-            //             int fill_level = FILL_L1;
-            //             float mshr_load = ((float) MSHR.occupancy / (float) MSHR_SIZE) * 100;
+                        int fill_level = FILL_L1;
+                        float mshr_load = ((float) MSHR.occupancy / (float) MSHR_SIZE) * 100;
 
 
-            //             // Level of prefetching depends son CONFIDENCE
-            //             if (stride[i].rpl == L1 && mshr_load < MSHR_LIMIT)
-            //             {
-            //                 fill_level = FILL_L1;
-            //             } else if (stride[i].rpl == L1 || stride[i].rpl == L2 
-            //                     || stride[i].rpl == L2R ){
-            //                 fill_level = FILL_L2;
-            //             } else
-            //             {
-            //                 return;
-            //             }
+                        // Level of prefetching depends son CONFIDENCE
+                        if (stride[i].rpl == L1 && mshr_load < MSHR_LIMIT)
+                        {
+                            fill_level = FILL_L1;
+                        } else if (stride[i].rpl == L1 || stride[i].rpl == L2 
+                                || stride[i].rpl == L2R ){
+                            fill_level = FILL_L2;
+                        } else
+                        {
+                            return;
+                        }
 
-            //             if (prefetch_line(ip, addr, p_addr, fill_level, 1))
-            //             {
-            //                 launched++;
-            //             }
-            //         }
+                        if (prefetch_line(ip, addr, p_addr, fill_level, 1))
+                        {
+                            launched++;
+                        }
+                    }
 
-            //     }
-            // }
-        // else
-        // {
-            // for (int i = 0; i < MAX_PF; i++) 
-            // {
-            //     stride[i].conf = 0;
-            //     stride[i].stride = 0;
-            //     stride[i].rpl = R;
-            // }
+                }
+            }
+        }
+        else
+        {
+            for (int i = 0; i < MAX_PF; i++) 
+            {
+                stride[i].conf = 0;
+                stride[i].stride = 0;
+                stride[i].rpl = R;
+            }
             launched = 0;
             for (int i = 0; i < MAX_PF_LAUNCH; i++)
                 {
@@ -1109,49 +1110,49 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                         }
                     }
                 }
-            // launched = 0;
-            // for (int i = 0; i < MAX_PF; i++) 
-            // {
-            //     stride[i].conf = 0;
-            //     stride[i].stride = 0;
-            //     stride[i].rpl = R;
-            // }
-            // if (!pages_berti_table_get((line_addr>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) return;
-            // else
-            // {
-            //      launched = 0;
-            //     for (int i = 0; i < MAX_PF_LAUNCH; i++)
-            //     {
-            //         uint64_t p_addr = (line_addr + stride[i].stride) << LOG2_BLOCK_SIZE;
-            //         uint64_t p_b_addr = (p_addr >> LOG2_BLOCK_SIZE);
+            launched = 0;
+            for (int i = 0; i < MAX_PF; i++) 
+            {
+                stride[i].conf = 0;
+                stride[i].stride = 0;
+                stride[i].rpl = R;
+            }
+            if (!pages_berti_table_get((line_addr>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) return;
+            else
+            {
+                 launched = 0;
+                for (int i = 0; i < MAX_PF_LAUNCH; i++)
+                {
+                    uint64_t p_addr = (line_addr + stride[i].stride) << LOG2_BLOCK_SIZE;
+                    uint64_t p_b_addr = (p_addr >> LOG2_BLOCK_SIZE);
 
-            //         if (!latency_table_get(p_addr, cpu))
-            //         {
-            //             int fill_level = FILL_L1;
-            //             float mshr_load = ((float) MSHR.occupancy / (float) MSHR_SIZE) * 100;
+                    if (!latency_table_get(p_addr, cpu))
+                    {
+                        int fill_level = FILL_L1;
+                        float mshr_load = ((float) MSHR.occupancy / (float) MSHR_SIZE) * 100;
 
-            //             // Level of prefetching depends son CONFIDENCE
-            //             if (stride[i].rpl == L1 && mshr_load < MSHR_LIMIT)
-            //             {
-            //                 fill_level = FILL_L1;
-            //             } else if (stride[i].rpl == L1 || stride[i].rpl == L2 
-            //                     || stride[i].rpl == L2R ){
-            //                 fill_level = FILL_L2;
-            //             } else
-            //             {
-            //                 return;
-            //             }
+                        // Level of prefetching depends son CONFIDENCE
+                        if (stride[i].rpl == L1 && mshr_load < MSHR_LIMIT)
+                        {
+                            fill_level = FILL_L1;
+                        } else if (stride[i].rpl == L1 || stride[i].rpl == L2 
+                                || stride[i].rpl == L2R ){
+                            fill_level = FILL_L2;
+                        } else
+                        {
+                            return;
+                        }
 
-            //             if (prefetch_line(ip, addr, p_addr, fill_level, 1))
-            //             {
-            //                 launched++;
-            //             }
-            //         }
+                        if (prefetch_line(ip, addr, p_addr, fill_level, 1))
+                        {
+                            launched++;
+                        }
+                    }
 
-            //     }
-            // }
+                }
+            }
             
-        //}
+        }
 
 
 
