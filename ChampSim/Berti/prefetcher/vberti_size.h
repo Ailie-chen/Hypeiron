@@ -1,4 +1,4 @@
-# define SIZE_1X
+# define SIZE_4X
 
 # if defined(SIZE_1X)
 // MICRO Size
@@ -16,7 +16,8 @@
 # define TABLE_SET_MASK               (0xF)
 
 # define BERTI_TABLE_SIZE             (32)
-# define BERTI_TABLE_STRIDE_SIZE      (32)
+# define BERTI_TABLE_STRIDE_SIZE      (16)
+//# define BERTI_TABLE_STRIDE_SIZE      (32)
 
 # elif defined(SIZE_4X)
 // 4xMICRO Size
@@ -25,7 +26,8 @@
 # define TABLE_SET_MASK               (0x1F)
 
 # define BERTI_TABLE_SIZE             (64)
-# define BERTI_TABLE_STRIDE_SIZE      (64)
+# define BERTI_TABLE_STRIDE_SIZE      (16)
+//# define BERTI_TABLE_STRIDE_SIZE      (64)
 
 # elif defined(SIZE_050X)
 // 0.5xMICRO Size
