@@ -18,6 +18,9 @@ std::mutex mtx;
 //uint64_t RR_dx[NUM_CPUS] = {0};
 
 //how to get the pages_addr: pages_addr = (line_addr & ADDR_MASK) >> LOG2_BLOCKS_PER_PAGE
+//addr used to search latency table is w/o ADDR_MASK
+//对于pf这一标记，用来指明是否是demand miss，但是目前的理解是针对real cache access miss和 prefetch miss时做的标记
+//这样两个miss时，只有第一次需要进行latency计算，后续如果在cache中就不需要再继续进行latency计算了。
 
 void notify_prefetch(uint64_t addr, uint64_t tag, uint32_t cpu, uint64_t cycle)
 {
@@ -118,7 +121,7 @@ uint8_t latency_table_add(uint64_t line_addr, uint64_t tag, uint32_t cpu,
      * Save if possible the new miss into the pqmshr (latency) table
      *
      * Parameters:
-     *  - line_addr: address without cache offset
+     *  - line_addr: address without ADDR——MASK
      *  - cpu: actual cpu
      *  - access: is theh entry accessed by a demand request
      *  - cycle: time to use in the latency table
