@@ -17,6 +17,7 @@ std::mutex mtx;
 //uint64_t RR_cycle[NUM_CPUS][SIZE_RR] = {0};
 //uint64_t RR_dx[NUM_CPUS] = {0};
 
+//how to get the pages_addr: pages_addr = (line_addr & ADDR_MASK) >> LOG2_BLOCKS_PER_PAGE
 
 void notify_prefetch(uint64_t addr, uint64_t tag, uint32_t cpu, uint64_t cycle)
 {
@@ -384,7 +385,7 @@ void history_table_add(uint64_t tag, uint32_t cpu, uint64_t addr)
      * Parameters:
      *  - tag: PC tag
      *  - cpu: actual cpu
-     *  - addr: ip addr access
+     *  - addr: line addr w/o ADDR_MASK
      */
     uint16_t set = tag & TABLE_SET_MASK;
     addr &= ADDR_MASK;
@@ -405,6 +406,9 @@ uint16_t history_table_get_aux(uint32_t cpu, uint32_t latency,
         uint64_t tag, uint64_t act_addr, uint64_t ip[HISTORY_TABLE_WAY],
         uint64_t addr[HISTORY_TABLE_WAY], uint64_t cycle)
 {
+    //**********
+    //line addr with ADDR_MASK
+    //**********
     uint16_t num_on_time = 0;
     uint16_t set = tag & TABLE_SET_MASK;
 
@@ -461,6 +465,7 @@ uint16_t history_table_get(uint32_t cpu, uint32_t latency,
      *  - on_time_ip (out): ips that can launch an on-time prefetch
      *  - on_time_addr (out): addr that can launch an on-time prefetch
      *  - num_on_time (out): number of ips that can launch an on-time prefetch
+     *  - addr: line addr w/o ADDR_MASK
      */
 
     act_addr &= ADDR_MASK;
@@ -478,7 +483,9 @@ uint16_t history_table_pages_get(uint32_t cpu, uint32_t latency,
         uint64_t addr[HISTORY_TABLE_WAY*HISTORY_TABLE_SET], 
         uint64_t cycle)
 {
-    
+    /*
+    *  - act_addr : line addr w/o ADDR_MASK
+    */
     act_addr &= ADDR_MASK;
     uint16_t cur_addr = (act_addr >> LOG2_BLOCKS_PER_PAGE);
 
@@ -860,7 +867,7 @@ uint8_t pages_berti_table_get(uint64_t page_addr, uint32_t cpu, stride_t res[MAX
      * Save the new information into the history table
      *
      * Parameters:
-     *  - tag: PC tag
+     *  - page_addrt: (line_addr & ADDR_MASK) >> LOG2_BLOCKS_PER_PAGE
      *  - cpu: actual cpu
      *
      * Return: the stride to prefetch
@@ -917,6 +924,10 @@ uint8_t pages_berti_table_get(uint64_t page_addr, uint32_t cpu, stride_t res[MAX
 void find_and_update(uint32_t cpu, uint64_t latency, uint64_t tag, 
         uint64_t cycle, uint64_t line_addr)
 { 
+    //************
+    //line addr : line addr w/o ADDR_MASK
+
+    //***************
     // We were tracking this miss
     uint64_t ip[HISTORY_TABLE_WAY];
     uint64_t addr[HISTORY_TABLE_WAY];
@@ -931,6 +942,7 @@ void find_and_update(uint32_t cpu, uint64_t latency, uint64_t tag,
     //access cache的时候还是需要更新pages_bertit的，只不过是在预取的时候，如果没有ip匹配的，那就使用pages_bertit
     for(uint32_t i = 0; i < pages_num_on_time ; i++)
     {
+        //if(i == 0) pages_berti_increase_conf_ip(((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE),cpu);
         if(i == 0) pages_berti_increase_conf_ip((line_addr>>LOG2_BLOCKS_PER_PAGE),cpu);
         if (i >= MAX_HISTORY_IP) break;
 
@@ -946,6 +958,7 @@ void find_and_update(uint32_t cpu, uint64_t latency, uint64_t tag,
         if ((std::abs(stride) < (1 << STRIDE_MASK)))
         {
             // Only useful strides
+            //pages_berti_table_add(((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE), cpu, stride);
             pages_berti_table_add((line_addr>>LOG2_BLOCKS_PER_PAGE), cpu, stride);
         }
     }
@@ -1045,8 +1058,8 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
     {
         std::cout << "A access:" << std::endl;
         std::cout << "PC is:"<< pc << " IP is: "<< ip <<" ADDR is:"<< addr << std::endl;
-        // std::cout << "IP hex is:"<< std:hex << ip <<" Line ADDR is:"<< std:hex << (line_addr&ADDR_MASK) << std:dec << std::endl;
-        // std::cout << "Pages Addrd is:"<< std:hex << (line_addr&ADDR_MASK)
+        // std::cout << "IP hex is:"<< std::hex << ip <<" Line ADDR is:"<< std::hex << (line_addr&ADDR_MASK) << std::dec << std::endl;
+        // std::cout << "Pages Addrd is:"<< std::hex << ((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE) << std::dec << std::endl;
     }
     int launched = 0;
     if(!vberti_table_get(ip, cpu, stride))
@@ -1056,6 +1069,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
             std::cout << "IP berti deltas no found" << std::endl;
         }
         launched = 0;
+        //if (!pages_berti_table_get(((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) 
         if (!pages_berti_table_get((line_addr>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) 
         {
             if(RECORD_DELTAS)
@@ -1162,6 +1176,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
             stride[i].stride = 0;
             stride[i].rpl = R;
         }
+        //if (!pages_berti_table_get(((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) 
         if (!pages_berti_table_get((line_addr>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) 
         {
             return;
