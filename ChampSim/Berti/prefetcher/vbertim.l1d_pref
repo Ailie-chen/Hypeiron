@@ -4,8 +4,8 @@
 #include <fstream>//record
 
 #include <mutex> //atom ops
-#define RECORD_IP_ADDR true
-#define RECORD_DELTAS true
+#define RECORD_IP_ADDR false
+#define RECORD_DELTAS false
 #define LANZAR_INT 8
 std::mutex mtx;
 
@@ -1087,68 +1087,6 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
         {
             std::cout << "IP berti deltas no found" << std::endl;
         }
-        launched = 0;
-        if (!pages_berti_table_get(((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) 
-        //if (!pages_berti_table_get((line_addr>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) 
-        {
-            if(RECORD_DELTAS)
-            {
-                std::cout << "Pages berti deltas no found" << std::endl;
-            }
-            return;
-        }
-        else
-        {        
-            if(RECORD_DELTAS)
-            {
-                std::cout << "Pages berti deltas:" << std::endl;
-            }
-            launched = 0;
-            for (int i = 0; i < MAX_PF_LAUNCH; i++)
-            {
-                uint64_t p_addr = (line_addr + stride[i].stride) << LOG2_BLOCK_SIZE;
-                uint64_t p_b_addr = (p_addr >> LOG2_BLOCK_SIZE);
-
-                if (!latency_table_get(p_addr, cpu))
-                {
-
-                    int fill_level = FILL_L1;
-                    float mshr_load = ((float) MSHR.occupancy / (float) MSHR_SIZE) * 100;
-
-                    // Level of prefetching depends son CONFIDENCE
-                    if (stride[i].rpl == L1 && mshr_load < MSHR_LIMIT)
-                    {
-                        fill_level = FILL_L1;
-                        if(RECORD_DELTAS)
-                        {
-                            std::cout << "deltas:"<< stride[i].stride << " L1" << " pref_addr:" \
-                            <<std::hex << p_b_addr << std::dec<< std::endl;
-                        }
-                    } else if (stride[i].rpl == L1 || stride[i].rpl == L2 
-                            || stride[i].rpl == L2R ){
-                        fill_level = FILL_L2;
-                        if(RECORD_DELTAS)
-                        {
-                            std::cout << "deltas:"<< stride[i].stride << " L2" << " pref_addr:" \
-                            <<std::hex << p_b_addr << std::dec<< std::endl;
-                        }
-                    } else
-                    {
-                        return;
-                    }
-
-                    if (prefetch_line(ip, addr, p_addr, fill_level, 1))
-                    {
-                        if(RECORD_DELTAS)
-                        {
-                            std::cout << "prefetch"<< std::endl;
-                        }
-                        launched++;
-                    }
-                }
-
-            }
-        }
     }
     else
     {
@@ -1164,125 +1102,117 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
         }
         launched = 0;
         for (int i = 0; i < MAX_PF_LAUNCH; i++)
+        {
+            uint64_t p_addr = (line_addr + stride[i].stride) << LOG2_BLOCK_SIZE;
+            uint64_t p_b_addr = (p_addr >> LOG2_BLOCK_SIZE);
+
+            //if (!shadow_cache_get(cpu, p_b_addr)
+            if (!latency_table_get(p_addr, cpu))
             {
-                uint64_t p_addr = (line_addr + stride[i].stride) << LOG2_BLOCK_SIZE;
-                uint64_t p_b_addr = (p_addr >> LOG2_BLOCK_SIZE);
 
-                //if (!shadow_cache_get(cpu, p_b_addr)
-                if (!latency_table_get(p_addr, cpu))
+                int fill_level = FILL_L1;
+                float mshr_load = ((float) MSHR.occupancy / (float) MSHR_SIZE) * 100;
+
+                // Level of prefetching depends son CONFIDENCE
+                if (stride[i].rpl == L1 && mshr_load < MSHR_LIMIT)
                 {
-
-                    int fill_level = FILL_L1;
-                    float mshr_load = ((float) MSHR.occupancy / (float) MSHR_SIZE) * 100;
-
-                    // Level of prefetching depends son CONFIDENCE
-                    if (stride[i].rpl == L1 && mshr_load < MSHR_LIMIT)
+                    fill_level = FILL_L1;
+                    if(RECORD_DELTAS)
                     {
-                        fill_level = FILL_L1;
-                        if(RECORD_DELTAS)
-                        {
-                            std::cout << "deltas:"<< stride[i].stride << " L1" << " pref_addr:" \
-                            <<std::hex << p_b_addr << std::dec<< std::endl;
-                        }
-                    } else if (stride[i].rpl == L1 || stride[i].rpl == L2 
-                            || stride[i].rpl == L2R ){
-                        fill_level = FILL_L2;
-                        if(RECORD_DELTAS)
-                        {
-                            std::cout << "deltas:"<< stride[i].stride << " L2" << " pref_addr:" \
-                            <<std::hex << p_b_addr << std::dec<< std::endl;
-                        }
-                    } else
-                    {
-                        return;
+                        std::cout << "deltas:"<< stride[i].stride << " L1" << " pref_addr:" \
+                        <<std::hex << p_b_addr << std::dec<< std::endl;
                     }
-
-                    if (prefetch_line(ip, addr, p_addr, fill_level, 1))
+                } else if (stride[i].rpl == L1 || stride[i].rpl == L2 
+                        || stride[i].rpl == L2R ){
+                    fill_level = FILL_L2;
+                    if(RECORD_DELTAS)
                     {
-                        if(RECORD_DELTAS)
-                        {
-                            std::cout << "prefetch"<< std::endl;
-                        }
-                        launched++;
+                        std::cout << "deltas:"<< stride[i].stride << " L2" << " pref_addr:" \
+                        <<std::hex << p_b_addr << std::dec<< std::endl;
                     }
+                } else
+                {
+                    return;
+                }
+
+                if (prefetch_line(ip, addr, p_addr, fill_level, 1))
+                {
+                    if(RECORD_DELTAS)
+                    {
+                        std::cout << "prefetch"<< std::endl;
+                    }
+                    launched++;
                 }
             }
+        }
+    }
+
+    if (!pages_berti_table_get(((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) 
+    {
+        if(RECORD_DELTAS)
+        {
+            std::cout << "Pages berti deltas no found" << std::endl;
+        }
+        return;
+    }
+    else
+    {        
+        if(RECORD_DELTAS)
+        {
+            std::cout << "Pages berti deltas:" << std::endl;
+        }
         launched = 0;
-        for (int i = 0; i < MAX_PF; i++) 
+        for (int i = 0; i < MAX_PF_LAUNCH; i++)
         {
-            stride[i].conf = 0;
-            stride[i].stride = 0;
-            stride[i].rpl = R;
-        }
-        if (!pages_berti_table_get(((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) 
-        //if (!pages_berti_table_get((line_addr>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) 
-        {
-            return;
-            if(RECORD_DELTAS)
-            {
-                std::cout << "Pages berti deltas no found" << std::endl;
-            }
-            return;
-        }
-        else
-        {
-            if(RECORD_DELTAS)
-            {
-                std::cout << "Pages berti deltas:" << std::endl;
-            }
-            launched = 0;
-            for (int i = 0; i < MAX_PF_LAUNCH; i++)
-            {
-                uint64_t p_addr = (line_addr + stride[i].stride) << LOG2_BLOCK_SIZE;
-                uint64_t p_b_addr = (p_addr >> LOG2_BLOCK_SIZE);
+            uint64_t p_addr = (line_addr + stride[i].stride) << LOG2_BLOCK_SIZE;
+            uint64_t p_b_addr = (p_addr >> LOG2_BLOCK_SIZE);
 
-                if (!latency_table_get(p_addr, cpu))
+            if (!latency_table_get(p_addr, cpu))
+            {
+
+                int fill_level = FILL_L1;
+                float mshr_load = ((float) MSHR.occupancy / (float) MSHR_SIZE) * 100;
+
+                // Level of prefetching depends son CONFIDENCE
+                if (stride[i].rpl == L1 && mshr_load < MSHR_LIMIT)
                 {
-                    int fill_level = FILL_L1;
-                    float mshr_load = ((float) MSHR.occupancy / (float) MSHR_SIZE) * 100;
-
-                    // Level of prefetching depends son CONFIDENCE
-                    if (stride[i].rpl == L1 && mshr_load < MSHR_LIMIT)
+                    fill_level = FILL_L1;
+                    if(RECORD_DELTAS)
                     {
-                        fill_level = FILL_L1;
-                        if(RECORD_DELTAS)
-                        {
-                            std::cout << "deltas:"<< stride[i].stride << " L1" << " pref_addr:" \
-                            <<std::hex << p_b_addr << std::dec<< std::endl;
-                        }
-                    } else if (stride[i].rpl == L1 || stride[i].rpl == L2 
-                            || stride[i].rpl == L2R ){
-                        fill_level = FILL_L2;
-                        if(RECORD_DELTAS)
-                        {
-                            std::cout << "deltas:"<< stride[i].stride << " L2" << " pref_addr:" \
-                            <<std::hex << p_b_addr << std::dec<< std::endl;
-                        }
-                    } else
-                    {
-                        return;
+                        std::cout << "deltas:"<< stride[i].stride << " L1" << " pref_addr:" \
+                        <<std::hex << p_b_addr << std::dec<< std::endl;
                     }
-
-                    if (prefetch_line(ip, addr, p_addr, fill_level, 1))
+                } else if (stride[i].rpl == L1 || stride[i].rpl == L2 
+                        || stride[i].rpl == L2R ){
+                    fill_level = FILL_L2;
+                    if(RECORD_DELTAS)
                     {
-                        launched++;
-                        if(RECORD_DELTAS)
-                        {
-                            std::cout << "prefetch"<< std::endl;
-                        }
+                        std::cout << "deltas:"<< stride[i].stride << " L2" << " pref_addr:" \
+                        <<std::hex << p_b_addr << std::dec<< std::endl;
                     }
+                } else
+                {
+                    return;
                 }
 
+                if (prefetch_line(ip, addr, p_addr, fill_level, 1))
+                {
+                    if(RECORD_DELTAS)
+                    {
+                        std::cout << "prefetch"<< std::endl;
+                    }
+                    launched++;
+                }
             }
+
         }
-        
-    }   
+    }
+
     if(RECORD_DELTAS || RECORD_IP_ADDR)
     {
         mtx.unlock();
     }
 }
-
 
 void CACHE::l1d_prefetcher_notify_about_dtlb_eviction(uint64_t addr, 
         uint32_t set, uint32_t way, uint8_t prefetch, uint64_t evicted_addr, 
