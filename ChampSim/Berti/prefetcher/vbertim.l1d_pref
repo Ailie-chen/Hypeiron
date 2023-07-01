@@ -942,8 +942,8 @@ void find_and_update(uint32_t cpu, uint64_t latency, uint64_t tag,
     //access cache的时候还是需要更新pages_bertit的，只不过是在预取的时候，如果没有ip匹配的，那就使用pages_bertit
     for(uint32_t i = 0; i < pages_num_on_time ; i++)
     {
-        //if(i == 0) pages_berti_increase_conf_ip(((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE),cpu);
-        if(i == 0) pages_berti_increase_conf_ip((line_addr>>LOG2_BLOCKS_PER_PAGE),cpu);
+        if(i == 0) pages_berti_increase_conf_ip(((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE),cpu);
+        //if(i == 0) pages_berti_increase_conf_ip((line_addr>>LOG2_BLOCKS_PER_PAGE),cpu);
         if (i >= MAX_HISTORY_IP) break;
 
         // Add information into berti table
@@ -958,8 +958,8 @@ void find_and_update(uint32_t cpu, uint64_t latency, uint64_t tag,
         if ((std::abs(stride) < (1 << STRIDE_MASK)))
         {
             // Only useful strides
-            //pages_berti_table_add(((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE), cpu, stride);
-            pages_berti_table_add((line_addr>>LOG2_BLOCKS_PER_PAGE), cpu, stride);
+            pages_berti_table_add(((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE), cpu, stride);
+            //pages_berti_table_add((line_addr>>LOG2_BLOCKS_PER_PAGE), cpu, stride);
         }
     }
 
@@ -1058,8 +1058,8 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
     {
         std::cout << "A access:" << std::endl;
         std::cout << "PC is:"<< pc << " IP is: "<< ip <<" ADDR is:"<< addr << std::endl;
-        // std::cout << "IP hex is:"<< std::hex << ip <<" Line ADDR is:"<< std::hex << (line_addr&ADDR_MASK) << std::dec << std::endl;
-        // std::cout << "Pages Addrd is:"<< std::hex << ((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE) << std::dec << std::endl;
+        std::cout << "IP hex is:"<< std::hex << ip <<" Line ADDR is:"<< std::hex << (line_addr&ADDR_MASK) << std::dec << std::endl;
+        std::cout << "Pages Addrd is:"<< std::hex << ((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE) << std::dec << std::endl;
     }
     int launched = 0;
     if(!vberti_table_get(ip, cpu, stride))
@@ -1069,8 +1069,8 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
             std::cout << "IP berti deltas no found" << std::endl;
         }
         launched = 0;
-        //if (!pages_berti_table_get(((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) 
-        if (!pages_berti_table_get((line_addr>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) 
+        if (!pages_berti_table_get(((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) 
+        //if (!pages_berti_table_get((line_addr>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) 
         {
             if(RECORD_DELTAS)
             {
@@ -1176,8 +1176,8 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
             stride[i].stride = 0;
             stride[i].rpl = R;
         }
-        //if (!pages_berti_table_get(((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) 
-        if (!pages_berti_table_get((line_addr>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) 
+        if (!pages_berti_table_get(((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) 
+        //if (!pages_berti_table_get((line_addr>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) 
         {
             return;
             if(RECORD_DELTAS)
