@@ -7,6 +7,7 @@
 #define RECORD_IP_ADDR false
 #define RECORD_DELTAS false
 #define LANZAR_INT 8
+#define BOP_ON true
 std::mutex mtx;
 
 // Last edit: 27 - Sept - 2021 12:10
@@ -530,6 +531,54 @@ uint16_t history_table_pages_get(uint32_t cpu, uint32_t latency,
     // We found on-time prefetchs
 }
 
+uint16_t history_table_bop_get(uint32_t cpu, uint32_t latency, 
+        uint64_t act_addr,
+        uint64_t timely_addr[HISTORY_TABLE_WAY*HISTORY_TABLE_SET], 
+        uint64_t cycle)
+{
+    /*
+    *  - act_addr : line addr w/o ADDR_MASK
+    */
+    act_addr &= ADDR_MASK;
+
+    uint16_t num_on_time = 0;
+
+    // The IPs that is launch in this cycle will be able to launch this prefetch
+    if (cycle < latency) return num_on_time;
+    cycle -= latency; 
+
+    // Pointer to guide
+    for(int idx_his = 0; idx_his < HISTORY_TABLE_SET ; idx_his++)
+    {
+        history_table_t *pointer = history_pointers[cpu][idx_his];
+        do
+        {
+            // Look for the IPs that can launch this prefetch
+            if (pointer->time <= cycle)
+            {
+                uint64_t his_addr = pointer->addr;
+                if (his_addr != act_addr && ((act_addr - his_addr)<256))
+                {
+                    for (int i = 0; i < num_on_time; i++)
+                    {
+                        if (pointer->addr == timely_addr[i]) continue;
+                    }
+                    timely_addr[num_on_time] = pointer->addr;
+                    num_on_time++;
+                }
+            }
+
+            if (pointer == historyt[cpu][idx_his])
+            {
+                pointer = &historyt[cpu][idx_his][HISTORY_TABLE_WAY - 1];
+            } else pointer--;
+        } while (pointer != history_pointers[cpu][idx_his]);
+    }
+    return num_on_time;
+
+    // We found on-time prefetchs
+}
+
 
 /******************************************************************************/
 /*                      Latency table functions                               */
@@ -924,6 +973,63 @@ uint8_t pages_berti_table_get(uint64_t page_addr, uint32_t cpu, stride_t res[MAX
 
     return 1;
 }
+
+void bop_deltas_table_init(uint32_t cpu)
+{
+    bop_pf_init_finish[cpu] = false;
+    int idx = 0;
+    for (int i = 1; i < 256; i += 1)
+    {
+        int n = i;
+        for (int j = 2; j <= 5; j += 1)
+        {
+            while (n % j == 0)
+            {
+                n /= j;
+            }
+        }
+        if (n == 1)
+        {
+            bop_deltas_table[cpu][idx].delta=i;
+            bop_deltas_table[cpu][idx].score=0;
+            idx++;
+        }       
+    }
+
+}
+
+void bop_deltas_table_update(uint32_t cpu, int64_t delta)
+{
+    bool phase_end = false;
+    for(int i = 0; i < BOP_DELTAS_NUM; i++)
+    {
+        bop_delta_entry &a = bop_deltas_table[cpu][i];
+        if(a.delta == delta)
+        {
+            a.score++;
+        }
+        if(a.score > bop_local_best_delta[cpu])
+        {
+            bop_local_best_delta[cpu] = a.score;
+        }
+        if(a.score == BOP_MAX_SCORE)
+        {
+            phase_end = true;
+        }
+    }
+    bop_learning_round[cpu]++;
+    if(phase_end == true && bop_learning_round[cpu] == BOP_MAX_ROUND)
+    {
+        bop_pf_init_finish[cpu]=true;
+        for(int i = 0; i < BOP_DELTAS_NUM; i++)
+        {
+            bop_delta_entry &b = bop_deltas_table[cpu][i];
+            b.score = 0;
+        }
+        bop_global_best_delta[cpu] = bop_local_best_delta[cpu];
+    }
+}
+
 void find_and_update(uint32_t cpu, uint64_t latency, uint64_t tag, 
         uint64_t cycle, uint64_t line_addr)
 { 
@@ -935,13 +1041,26 @@ void find_and_update(uint32_t cpu, uint64_t latency, uint64_t tag,
     uint64_t ip[HISTORY_TABLE_WAY];
     uint64_t addr[HISTORY_TABLE_WAY];
     uint16_t num_on_time = 0;
+
     uint16_t pages_num_on_time = 0;
     uint64_t pages_addr[HISTORY_TABLE_SET*HISTORY_TABLE_WAY];
 
+    uint16_t bop_num_on_time = 0;
+    uint64_t timely_addr[HISTORY_TABLE_SET*HISTORY_TABLE_WAY];
+
     // Get the IPs that can launch a prefetch
     num_on_time = history_table_get(cpu, latency, tag, line_addr, ip, addr, cycle);
-     pages_num_on_time = history_table_pages_get(cpu, latency, line_addr, pages_addr, cycle);
+    pages_num_on_time = history_table_pages_get(cpu, latency, line_addr, pages_addr, cycle);
+    bop_num_on_time = history_table_bop_get(cpu, latency, line_addr, pages_addr, cycle);
 
+    //***********************bop*****************************//
+    // for(uint32_t i = 0; i < pages_num_on_time ; i++)
+    // {
+    //     int64_t delta = (line_addr & ADDR_MASK)-timely_addr[i];
+    //     bop_deltas_table_update(cpu, delta);
+    // }
+
+    //***********************pages*****************************//
     //access cache的时候还是需要更新pages_bertit的，只不过是在预取的时候，如果没有ip匹配的，那就使用pages_bertit
     for(uint32_t i = 0; i < pages_num_on_time ; i++)
     {
@@ -966,7 +1085,7 @@ void find_and_update(uint32_t cpu, uint64_t latency, uint64_t tag,
         }
     }
 
-    
+    //***********************ip*****************************//
     for (uint32_t i = 0; i < num_on_time; i++)
     {
         // Increase conf ip
@@ -997,6 +1116,7 @@ void CACHE::l1d_prefetcher_initialize()
     shadow_cache_init(cpu);
     latency_table_init(cpu);
     history_table_init(cpu);
+    // bop_deltas_table_init(cpu);
 
     std::cout << "History Sets: " << HISTORY_TABLE_SET << std::endl;
     std::cout << "History Ways: " << HISTORY_TABLE_WAY << std::endl;
@@ -1073,7 +1193,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
     
     // 打开文件流
     // 运行过程中的信息
-    
+    //******************IP prefetch**************
     if(RECORD_IP_ADDR)
     {
         std::cout << "PC is:"<< pc << " IP is: "<< ip <<" ADDR is:"<< addr << std::endl;
@@ -1147,6 +1267,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
         }
     }
 
+    //*********************pages prefetch*********************//
     if (!pages_berti_table_get(((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) 
     {
         if(RECORD_DELTAS)
@@ -1205,6 +1326,18 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                 }
             }
 
+        }
+    }
+
+    launched = 0;
+    //***************bop prefetch******************//
+    if(bop_pf_init_finish[cpu] == true && BOP_ON)
+    {
+        uint64_t p_addr = (line_addr + bop_global_best_delta[cpu]) << LOG2_BLOCK_SIZE;
+        uint64_t p_b_addr = (p_addr >> LOG2_BLOCK_SIZE);
+        if (prefetch_line(ip, addr, p_addr, FILL_L2, 1))
+        {
+            launched++;
         }
     }
 

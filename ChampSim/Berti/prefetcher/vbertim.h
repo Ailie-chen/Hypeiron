@@ -134,7 +134,7 @@ uint16_t history_table_get(uint32_t cpu, uint32_t latency,
         uint64_t addr[HISTORY_TABLE_WAY], uint64_t cycle);
 
 uint16_t history_table_pages_get(uint32_t cpu, uint32_t latency, 
-         uint64_t act_addr, uint64_t addr[HISTORY_TABLE_WAY], uint64_t cycle);
+         uint64_t act_addr, uint64_t addr[HISTORY_TABLE_WAY*HISTORY_TABLE_SET], uint64_t cycle);
 
 // Auxiliar history table functions
 void vberti_table_add(uint64_t tag, uint32_t cpu, int64_t stride);
@@ -152,3 +152,31 @@ void pages_berti_increase_conf_ip(uint64_t page_addr, uint32_t cpu);
 //add
 //history ：添加使用page或者page+offset进行索引的功能，返回page内满足要求的deltas
 //deltas table：对于每一个page设置一个deltas表，找出最高的deltas，计算deltas要求使用访问次数，
+
+
+//添加BOP
+//# define    BOP_LEARN_DEPTH     (8)
+# define    BOP_DELTAS_NUM      (52)
+# define    BOP_MAX_SCORE       (32)
+# define    BOP_MAX_ROUND       (300)
+# define    BOP_PF_DEGREE       (1)
+typedef struct BOP_DELTA_ENTRY
+{
+    uint64_t delta;
+    uint64_t score;
+}bop_delta_entry;
+
+bop_delta_entry bop_deltas_table[NUM_CPUS][BOP_DELTAS_NUM];
+int64_t bop_local_best_delta[NUM_CPUS];
+int64_t bop_global_best_delta[NUM_CPUS];
+uint64_t bop_learning_round[NUM_CPUS];
+bool bop_pf_init_finish[NUM_CPUS];
+
+uint16_t history_table_bop_get(uint32_t cpu, uint32_t latency, 
+         uint64_t line_addr, 
+         uint64_t timely_addr[HISTORY_TABLE_WAY*HISTORY_TABLE_SET], 
+         uint64_t cycle);
+
+void bop_deltas_table_update(uint32_t cpu, int64_t delta);
+void bop_deltas_table_init(uint32_t cpu);
+
