@@ -11,9 +11,9 @@
 #define LANZAR_INT 8
 
 //******预取器开关*********//
-//#define BERTI_IP_ON
-//#define BERTI_PAGES_ON
-#define BOP_ON
+#define BERTI_IP_ON
+#define BERTI_PAGES_ON
+//#define BOP_ON
 
 std::mutex mtx;
 
@@ -1061,11 +1061,11 @@ void find_and_update(uint32_t cpu, uint64_t latency, uint64_t tag,
     bop_num_on_time = history_table_bop_get(cpu, latency, line_addr, pages_addr, cycle);
 
     //***********************bop*****************************//
-    // for(uint32_t i = 0; i < pages_num_on_time ; i++)
-    // {
-    //     int64_t delta = (line_addr & ADDR_MASK)-timely_addr[i];
-    //     bop_deltas_table_update(cpu, delta);
-    // }
+    for(uint32_t i = 0; i < pages_num_on_time ; i++)
+    {
+        int64_t delta = (line_addr & ADDR_MASK)-timely_addr[i];
+        bop_deltas_table_update(cpu, delta);
+    }
 
     //***********************pages*****************************//
     //access cache的时候还是需要更新pages_bertit的，只不过是在预取的时候，如果没有ip匹配的，那就使用pages_bertit
@@ -1123,7 +1123,7 @@ void CACHE::l1d_prefetcher_initialize()
     shadow_cache_init(cpu);
     latency_table_init(cpu);
     history_table_init(cpu);
-    // bop_deltas_table_init(cpu);
+    bop_deltas_table_init(cpu);
 
     std::cout << "History Sets: " << HISTORY_TABLE_SET << std::endl;
     std::cout << "History Ways: " << HISTORY_TABLE_WAY << std::endl;
@@ -1260,7 +1260,8 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                     }
                 } else
                 {
-                    return;
+                    //return;
+                    break;
                 }
 
                 if (prefetch_line(ip, addr, p_addr, fill_level, 1))
@@ -1324,7 +1325,8 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                     }
                 } else
                 {
-                    return;
+                    //return;
+                    break;
                 }
 
                 if (prefetch_line(ip, addr, p_addr, fill_level, 1))
