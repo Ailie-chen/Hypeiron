@@ -476,7 +476,7 @@ def record_results(sort_item=None):
        
     with open(fig_stat_name, 'w') as f:
         
-        print(','.join(['Trace_r0'] + sort_stat[trace] * len(CONFIGS["output_metrics"])), file=f)        
+        print(','.join(['Trace'] + sort_stat[trace] * len(CONFIGS["output_metrics"])), file=f)        
         title_metric = []
         row = []
         already_trace=[]
@@ -485,7 +485,7 @@ def record_results(sort_item=None):
             #print(title_metric)
             #带有title的metric，每一个mertic有4个,对应不同的prefetcher
         
-        print(','.join(['Trace_r1'] + title_metric ), file=f)
+        print(','.join(['Trace'] + title_metric ), file=f)
         for trace in CONFIGS["output_workloads"] +['Average']:
             if(trace not in ROI_ORIGIN_STATS):
                 print(trace,  "no trace")
