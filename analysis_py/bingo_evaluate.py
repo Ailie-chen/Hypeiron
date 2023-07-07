@@ -162,10 +162,9 @@ def parse_file(file: str) -> Tuple[str, str, int, Dict[str, Any]]:
 #使用map的方法，将parse_file应用于res_files(all_files)中的每一个文件
 def parse_origin_results() -> None:
     global ROI_ORIGIN_STATS
-    res_files = glob.glob(os.path.join(CONFIGS["results_dir"], '*.xz'))
-    #res_files = glob.glob(os.path.join(CONFIGS["results_dir"], 'hashed_perceptron-no-ip_stride-no-no-no-no-no-lru-lru-lru-srrip-drrip-lru-lru-lru-1core-no---649.fotonik3d_s-7084B.champsimtrace.xz'))
-
-    all_files = res_files
+    res_files1 = glob.glob(os.path.join(CONFIGS["baseline_results_dir"], '*.xz'))
+    res_files2 = glob.glob(os.path.join(CONFIGS["results_dir"], '*.xz'))
+    all_files = res_files1 + res_files2
     with multiprocessing.Pool(multiprocessing.cpu_count()) as pool:
         results = pool.map(parse_file, all_files)
         pool.close()
@@ -432,8 +431,8 @@ def cal_final_results():
     #         row.pop()
             
 def record_results(sort_item=None):
-    res_name = CONFIGS["stats_dir"] + '/'+ str(CONFIGS["core_num"]) + "core_" + CONFIGS["output_name"] + "_"+CONFIGS["benchmark"] +"_"+ CONFIGS["insts_num"] + '.csv'
-    fig_stat_name = CONFIGS["stats_dir"]+ "_figs" + '/' +str(CONFIGS["core_num"]) + "core_" + CONFIGS["output_name"] + "_"+CONFIGS["benchmark"] +"_"+ CONFIGS["insts_num"] + '.csv'
+    res_name = CONFIGS["stats_dir"] + '/'+ CONFIGS["date"] + '.csv'
+    fig_stat_name = CONFIGS["stats_dir"]+ "_figs" + '/' + CONFIGS["date"] + '.csv'
     
     sort_stat={}
     #sort_stat的第一层键值为trace，第二层键值为prefetcher
@@ -477,7 +476,8 @@ def record_results(sort_item=None):
        
     with open(fig_stat_name, 'w') as f:
         
-        print(','.join(['Trace'] + sort_stat[trace] * len(CONFIGS["output_metrics"])), file=f)        title_metric = []
+        print(','.join(['Trace'] + sort_stat[trace] * len(CONFIGS["output_metrics"])), file=f)        
+        title_metric = []
         row = []
         already_trace=[]
         for field in CONFIGS["output_metrics"]:
@@ -486,7 +486,6 @@ def record_results(sort_item=None):
             #带有title的metric，每一个mertic有4个,对应不同的prefetcher
         
         print(','.join(['Trace'] + title_metric ), file=f)
-        print(','.join(['Trace'] + sort_stat[trace] * len(CONFIGS["output_metrics"])), file=f)
         for trace in CONFIGS["output_workloads"] +['Average']:
             if(trace not in ROI_ORIGIN_STATS):
                 print(trace,  "no trace")
