@@ -162,13 +162,13 @@ void pages_berti_increase_conf_ip(uint64_t page_addr, uint32_t cpu);
 # define    BOP_PF_DEGREE       (1)
 typedef struct BOP_DELTA_ENTRY
 {
-    uint64_t delta;
+    int64_t delta;
     uint64_t score;
 }bop_delta_entry;
 
 bop_delta_entry bop_deltas_table[NUM_CPUS][BOP_DELTAS_NUM];
-int64_t bop_local_best_delta[NUM_CPUS];
-int64_t bop_global_best_delta[NUM_CPUS];
+bop_delta_entry bop_local_best_delta[NUM_CPUS];
+uint64_t bop_global_best_delta[NUM_CPUS];
 uint64_t bop_learning_round[NUM_CPUS];
 bool bop_pf_init_finish[NUM_CPUS];
 
@@ -180,3 +180,7 @@ uint16_t history_table_bop_get(uint32_t cpu, uint32_t latency,
 void bop_deltas_table_update(uint32_t cpu, int64_t delta);
 void bop_deltas_table_init(uint32_t cpu);
 
+
+//为BINGO_BOP进行定义
+# define RR_TABLE_SIZE  (256)
+# define DEGREE         (32)

@@ -1,21 +1,498 @@
 #include "vbertim.h"
-
+#include <sstream>
 #include <iostream> //reocrd
 #include <fstream>//record
-
+#include <bits/stdc++.h>
 #include <mutex> //atom ops
+#include <unordered_map>
+#include <unordered_set>
 
 //******debug开关********//
-#define RECORD_IP_ADDR false
-#define RECORD_DELTAS false
+#define RECORD_IP_ADDR true
+#define RECORD_DELTAS true
 #define LANZAR_INT 8
 
 //******预取器开关*********//
 #define BERTI_IP_ON
 #define BERTI_PAGES_ON
-#define BOP_ON
+//#define BOP_ON
+#define BINGO_BOP_ON
 
 std::mutex mtx;
+
+#ifdef BINGO_BOP_ON
+class Table {
+  public:
+    Table(int width, int height) : width(width), height(height), cells(height, vector<string>(width)) {}
+
+    void set_row(int row, const vector<string> &data, int start_col = 0) {
+        assert(data.size() + start_col == this->width);
+        for (unsigned col = start_col; col < this->width; col += 1)
+            this->set_cell(row, col, data[col]);
+    }
+
+    void set_col(int col, const vector<string> &data, int start_row = 0) {
+        assert(data.size() + start_row == this->height);
+        for (unsigned row = start_row; row < this->height; row += 1)
+            this->set_cell(row, col, data[row]);
+    }
+
+    void set_cell(int row, int col, string data) {
+        assert(0 <= row && row < (int)this->height);
+        assert(0 <= col && col < (int)this->width);
+        this->cells[row][col] = data;
+    }
+
+    void set_cell(int row, int col, double data) {
+        this->oss.str("");
+        this->oss << setw(11) << fixed << setprecision(8) << data;
+        this->set_cell(row, col, this->oss.str());
+    }
+
+    void set_cell(int row, int col, int64_t data) {
+        this->oss.str("");
+        this->oss << setw(11) << std::left << data;
+        this->set_cell(row, col, this->oss.str());
+    }
+
+    void set_cell(int row, int col, int data) { this->set_cell(row, col, (int64_t)data); }
+
+    void set_cell(int row, int col, uint64_t data) { this->set_cell(row, col, (int64_t)data); }
+
+    string to_string() {
+        vector<int> widths;
+        for (unsigned i = 0; i < this->width; i += 1) {
+            int max_width = 0;
+            for (unsigned j = 0; j < this->height; j += 1)
+                max_width = max(max_width, (int)this->cells[j][i].size());
+            widths.push_back(max_width + 2);
+        }
+        string out;
+        out += Table::top_line(widths);
+        out += this->data_row(0, widths);
+        for (unsigned i = 1; i < this->height; i += 1) {
+            out += Table::mid_line(widths);
+            out += this->data_row(i, widths);
+        }
+        out += Table::bot_line(widths);
+        return out;
+    }
+
+    string data_row(int row, const vector<int> &widths) {
+        string out;
+        for (unsigned i = 0; i < this->width; i += 1) {
+            string data = this->cells[row][i];
+            data.resize(widths[i] - 2, ' ');
+            out += " | " + data;
+        }
+        out += " |\n";
+        return out;
+    }
+
+    static string top_line(const vector<int> &widths) { return Table::line(widths, "┌", "┬", "┐"); }
+
+    static string mid_line(const vector<int> &widths) { return Table::line(widths, "├", "┼", "┤"); }
+
+    static string bot_line(const vector<int> &widths) { return Table::line(widths, "└", "┴", "┘"); }
+
+    static string line(const vector<int> &widths, string left, string mid, string right) {
+        string out = " " + left;
+        for (unsigned i = 0; i < widths.size(); i += 1) {
+            int w = widths[i];
+            for (int j = 0; j < w; j += 1)
+                out += "─";
+            if (i != widths.size() - 1)
+                out += mid;
+            else
+                out += right;
+        }
+        return out + "\n";
+    }
+
+  private:
+    unsigned width;
+    unsigned height;
+    vector<vector<string>> cells;
+    ostringstream oss;
+};
+//##############定义BINGO_BOP中的RR Table采用的是一个直接映射的cache，这个cache的相连度为1#########
+//组相连cache
+template <class T> class SetAssociativeCache {
+  public:
+    class Entry {
+      public:
+        uint64_t key; //key的作用是什么？
+        uint64_t index;
+        uint64_t tag;
+        bool valid;
+        T data;
+    };
+
+    //初始化cache
+    SetAssociativeCache(int size, int num_ways)
+        : size(size), num_ways(num_ways), num_sets(size / num_ways), entries(num_sets, vector<Entry>(num_ways)),
+          cams(num_sets) {
+        assert(size % num_ways == 0);
+        for (int i = 0; i < num_sets; i += 1)
+            for (int j = 0; j < num_ways; j += 1)
+                entries[i][j].valid = false;
+    }
+
+    Entry *erase(uint64_t key) {
+        Entry *entry = this->find(key);
+        uint64_t index = key % this->num_sets; //index是组索引？
+        uint64_t tag = key / this->num_sets;   //tag是行tag？
+        auto &cam = cams[index];
+        int num_erased = cam.erase(tag);
+        if (entry)
+            entry->valid = false;
+        assert(entry ? num_erased == 1 : num_erased == 0);
+        return entry;
+    }
+
+    /**
+     * @return The old state of the entry that was written to.
+     */
+    Entry insert(uint64_t key, const T &data) {
+        Entry *entry = this->find(key);
+        if (entry != nullptr) {
+            Entry old_entry = *entry;
+            entry->data = data;
+            return old_entry;
+        }
+        uint64_t index = key % this->num_sets;
+        uint64_t tag = key / this->num_sets;
+        vector<Entry> &set = this->entries[index];
+        int victim_way = -1;
+        for (int i = 0; i < this->num_ways; i += 1)
+            if (!set[i].valid) {
+                victim_way = i;
+                break;
+            }
+        if (victim_way == -1) {
+            victim_way = this->select_victim(index);
+        }
+        Entry &victim = set[victim_way];
+        Entry old_entry = victim;
+        victim = {key, index, tag, true, data};
+        auto &cam = cams[index];
+        if (old_entry.valid) {
+            int num_erased = cam.erase(old_entry.tag);
+            assert(num_erased == 1);
+        }
+        cam[tag] = victim_way;
+        return old_entry;
+    }
+
+    Entry *find(uint64_t key) {
+        uint64_t index = key % this->num_sets;
+        uint64_t tag = key / this->num_sets;
+        auto &cam = cams[index];
+        if (cam.find(tag) == cam.end())
+            return nullptr;
+        int way = cam[tag];
+        Entry &entry = this->entries[index][way];
+        assert(entry.tag == tag && entry.valid);
+        return &entry;
+    }
+
+      /**
+     * For debugging purposes.
+     */
+    string log(vector<string> headers, function<void(Entry &, Table &, int)> write_data) {
+        vector<Entry> valid_entries = this->get_valid_entries();
+        Table table(headers.size(), valid_entries.size() + 1);
+        table.set_row(0, headers);
+        for (unsigned i = 0; i < valid_entries.size(); i += 1)
+            write_data(valid_entries[i], table, i + 1);
+        return table.to_string();
+    }
+
+
+
+    void set_debug_mode(bool enable) { this->debug = enable; }
+
+  protected:
+    /**
+     * @return The way of the selected victim.
+     */
+    virtual int select_victim(uint64_t index) {
+        /* random eviction policy if not overriden */
+        return rand() % this->num_ways;
+    }
+
+    vector<Entry> get_valid_entries() {
+        vector<Entry> valid_entries;
+        for (int i = 0; i < num_sets; i += 1)
+            for (int j = 0; j < num_ways; j += 1)
+                if (entries[i][j].valid)
+                    valid_entries.push_back(entries[i][j]);
+        return valid_entries;
+    }
+
+    int size;
+    int num_ways;
+    int num_sets;
+    vector<vector<Entry>> entries;
+    vector<unordered_map<uint64_t, int>> cams;
+    bool debug = false;
+};
+//直接映射cache，继承自组相连cache
+template <class T> class DirectMappedCache : public SetAssociativeCache<T> {
+    typedef SetAssociativeCache<T> Super;
+
+  public:
+    DirectMappedCache(int size) : Super(size, 1) {}
+};
+
+/** End Of Cache Framework **/
+
+class RecentRequestsTableData {
+  public:
+    uint64_t base_address;
+};
+
+//继承自直接映射cache，直接映射cache是组相连cache的一个特殊例子，组内的条目为1
+class RecentRequestsTable : public DirectMappedCache<RecentRequestsTableData> {
+    typedef DirectMappedCache<RecentRequestsTableData> Super;
+
+  public:
+    RecentRequestsTable(int size) : Super(size) {
+        assert(__builtin_popcount(size) == 1);
+        this->hash_w = __builtin_ctz(size);
+    }
+
+    Entry insert(uint64_t base_address) {
+        uint64_t key = this->hash(base_address);
+        return Super::insert(key, {base_address});
+    }
+
+    bool find(uint64_t base_address) {
+        uint64_t key = this->hash(base_address);
+        return (Super::find(key) != nullptr);
+    }
+
+    string log() {
+        vector<string> headers({"Hash", "Base Address"});
+        return Super::log(headers, this->write_data);
+    }
+
+  private:
+    static void write_data(Entry &entry, Table &table, int row) {
+        table.set_cell(row, 0, bitset<20>(entry.key).to_string());
+        table.set_cell(row, 1, entry.data.base_address);
+    }
+
+    /* The RR table is accessed through a simple hash function. For instance, for a 256-entry RR table, we XOR the 8
+     * least significant line address bits with the next 8 bits to obtain the table index. For 12-bit tags, we skip the
+     * 8 least significant line address bits and extract the next 12 bits. */
+    uint64_t hash(uint64_t input) {
+        int next_w_bits = ((1 << hash_w) - 1) & (input >> hash_w);
+        uint64_t output = ((1 << 20) - 1) & (next_w_bits ^ input);
+        if (this->debug) {
+            cerr << "[RR] hash( " << bitset<32>(input).to_string() << " ) = " << bitset<20>(output).to_string() << endl;
+        }
+        return output;
+    }
+
+    int hash_w;
+};
+
+
+//#################定义类 BOP和 Bestoffsetlearning#######################
+class BestOffsetLearning {
+  public:
+    BestOffsetLearning(int blocks_in_page) : blocks_in_page(blocks_in_page) {
+        /* Useful offset values depend on the memory page size, as the BO prefetcher does not prefetch across page
+         * boundaries. For instance, assuming 4KB pages and 64B lines, a page contains 64 lines, and there is no point
+         * in considering offset values greater than 63. However, it may be useful to consider offsets greater than 63
+         * for systems having superpages. */
+        /* We propose a method for offset sampling that is algorithmic and not totally arbitrary: we include in our list
+         * all the offsets between 1 and 256 whose prime factorization does not contain primes greater than 5. */
+        /* Nothing prevents a BO prefetcher to use negative offset values. Although some applications might benefit from
+         * negative offsets, we did not observe any benefit in our experiments. Hence we consider only positive offsets
+         * in this study. */
+
+         //初始化offset，选取一系列素数
+        for (int i = 1; i < blocks_in_page; i += 1) {
+            int n = i;
+            for (int j = 2; j <= 5; j += 1)
+                while (n % j == 0)
+                    n /= j;
+            if (n == 1)
+                offset_list.push_back({i, 0});
+        }
+    }
+
+    /**
+     * @return The current best offset.
+     */
+    int test_offset(uint64_t block_number, RecentRequestsTable &recent_requests_table) {
+        int page_offset = block_number % this->blocks_in_page;
+        //每次访问都对index_to_test加1，对不同的offset进行遍历测试
+        Entry &entry = this->offset_list[this->index_to_test];
+        //由于预取不会超过页面的大小，所以这个地方的寻找的X和X+D也应该在同一个页面，后续在L1中使用的时候，需要做一些改进
+        bool found =
+            is_inside_page(page_offset - entry.offset) && recent_requests_table.find(block_number - entry.offset);
+        if (this->debug) {
+            cerr << "[BOL] testing offset=" << entry.offset << " with score=" << entry.score << endl;
+            cerr << "[BOL] match=" << found << endl;
+        }
+        if (found) {
+            entry.score += 1;
+            if (entry.score > this->best_score) {
+                this->best_score = entry.score;
+                this->local_best_offset = entry.offset;
+            }
+        }
+        this->index_to_test = (this->index_to_test + 1) % this->offset_list.size();
+        /* test round termination */
+        if (this->index_to_test == 0) {
+            if (this->debug) {
+                cerr << "[BOL] round=" << this->round << " finished" << endl;
+            }
+            this->round += 1;
+            /* The current learning phase finishes at the end of a round when either of the two following events happens
+             * first: one of the scores equals SCOREMAX, or the number of rounds equals ROUNDMAX (a fixed parameter). */
+            if (this->best_score >= SCORE_MAX || this->round == ROUND_MAX) {
+                if (this->best_score <= BAD_SCORE)
+                    this->global_best_offset = 0; /* turn off prefetching */
+                else
+                    this->global_best_offset = this->local_best_offset;
+                if (this->debug) {
+                    cerr << "[BOL] learning phase finished, winner=" << this->global_best_offset << endl;
+                    cerr << this->log();
+                }
+                /* reset all internal state */
+                for (auto &entry : this->offset_list)
+                    entry.score = 0;
+                this->local_best_offset = 0;
+                this->best_score = 0;
+                this->round = 0;
+            }
+        }
+        return this->global_best_offset;
+    }
+
+    string log() {
+        Table table(2, offset_list.size() + 1);
+        table.set_row(0, {"Offset", "Score"});
+        for (unsigned i = 0; i < offset_list.size(); i += 1) {
+            table.set_cell(i + 1, 0, offset_list[i].offset);
+            table.set_cell(i + 1, 1, offset_list[i].score);
+        }
+        return table.to_string();
+    }
+
+    void set_debug_mode(bool enable) { this->debug = enable; }
+
+  private:
+    bool is_inside_page(int page_offset) { return (0 <= page_offset && page_offset < this->blocks_in_page); }
+
+    class Entry {
+      public:
+        int offset;
+        int score;
+    };
+
+    int blocks_in_page;
+    vector<Entry> offset_list;
+
+    int round = 0;
+    int best_score = 0;
+    int index_to_test = 0;
+    int local_best_offset = 0;
+    int global_best_offset = 1;
+
+    const int SCORE_MAX = 31;
+    const int ROUND_MAX = 100;
+    const int BAD_SCORE = 1;
+
+    bool debug = false;
+};
+
+class BOP {
+  public:
+    //prefetchers = vector<BOP>(NUM_CPUS, BOP(PAGE_SIZE / BLOCK_SIZE, RR_TABLE_SIZE, DEGREE));
+    //初始化的配置，blocks_in_page是一个页面内的blocks数目
+    BOP(int blocks_in_page, int recent_requests_table_size, int degree)
+        : blocks_in_page(blocks_in_page), best_offset_learning(blocks_in_page),
+          recent_requests_table(recent_requests_table_size), degree(degree) {}
+
+    /**
+     * @return A vector of block numbers that should be prefetched.
+     */
+    vector<uint64_t> access(uint64_t block_number) {
+        uint64_t page_number = block_number / this->blocks_in_page;
+        int page_offset = block_number % this->blocks_in_page;
+        /* ... and if X and X + D lie in the same memory page, a prefetch request for line X + D is sent to the L3
+         * cache. */
+        if (this->debug) {
+            cerr << "[BOP] block_number=" << block_number << endl;
+            cerr << "[BOP] page_number=" << page_number << endl;
+            cerr << "[BOP] page_offset=" << page_offset << endl;
+            cerr << "[BOP] best_offset=" << this->prefetch_offset << endl;
+        }
+
+        vector<uint64_t> pred;
+        for (int i = 1; i <= this->degree; i += 1) {
+            if (this->prefetch_offset != 0 && is_inside_page(page_offset + i * this->prefetch_offset))
+                pred.push_back(block_number + i * this->prefetch_offset);
+            else {
+                if (this->debug)
+                    cerr << "[BOP] X and X + " << i << " * D do not lie in the same memory page, no prefetch issued"
+                         << endl;
+                break;
+            }
+        }
+
+        int old_offset = this->prefetch_offset;
+        /* On every eligible L2 read access (miss or prefetched hit), we test an offset di from the list. */
+        this->prefetch_offset = this->best_offset_learning.test_offset(block_number, recent_requests_table);
+        if (this->debug) {
+            if (old_offset != this->prefetch_offset)
+                cerr << "[BOP] offset changed from " << old_offset << " to " << this->prefetch_offset << endl;
+            cerr << this->recent_requests_table.log();
+            cerr << this->best_offset_learning.log();
+        }
+        return pred;
+    }
+
+    void cache_fill(uint64_t block_number, bool prefetch) {
+        int page_offset = block_number % this->blocks_in_page;
+        if (this->prefetch_offset == 0 && prefetch)
+            return;
+        if (this->prefetch_offset != 0 && !prefetch)
+            return;
+        if (!this->is_inside_page(page_offset - this->prefetch_offset))
+            return;
+        //当预取回来的时候，会向RR Table中插入发出预取访问的基地址
+        this->recent_requests_table.insert(block_number - this->prefetch_offset);
+    }
+
+    void set_debug_level(int debug_level) {
+        bool enable = (bool)debug_level;
+        this->debug = enable;
+        this->best_offset_learning.set_debug_mode(enable);
+        this->recent_requests_table.set_debug_mode(enable);
+    }
+
+  private:
+    bool is_inside_page(int page_offset) { return (0 <= page_offset && page_offset < this->blocks_in_page); }
+
+    int blocks_in_page;
+    int prefetch_offset = 0;
+
+    BestOffsetLearning best_offset_learning;
+    RecentRequestsTable recent_requests_table;
+    int degree;
+
+    bool debug = false;
+};
+
+vector<BOP> prefetchers;
+
+#endif
 
 // Last edit: 27 - Sept - 2021 12:10
 
@@ -983,6 +1460,9 @@ uint8_t pages_berti_table_get(uint64_t page_addr, uint32_t cpu, stride_t res[MAX
 
 void bop_deltas_table_init(uint32_t cpu)
 {
+    bop_local_best_delta[cpu].score = 0;
+    bop_local_best_delta[cpu].delta = 0;
+    bop_global_best_delta[cpu] = 0;
     bop_pf_init_finish[cpu] = false;
     int idx = 0;
     for (int i = 1; i < 256; i += 1)
@@ -1015,9 +1495,9 @@ void bop_deltas_table_update(uint32_t cpu, int64_t delta)
         {
             a.score++;
         }
-        if(a.score > bop_local_best_delta[cpu])
+        if(a.score > bop_local_best_delta[cpu].score)
         {
-            bop_local_best_delta[cpu] = a.score;
+            bop_local_best_delta[cpu] = a;
         }
         if(a.score == BOP_MAX_SCORE)
         {
@@ -1033,7 +1513,7 @@ void bop_deltas_table_update(uint32_t cpu, int64_t delta)
             bop_delta_entry &b = bop_deltas_table[cpu][i];
             b.score = 0;
         }
-        bop_global_best_delta[cpu] = bop_local_best_delta[cpu];
+        bop_global_best_delta[cpu] = bop_local_best_delta[cpu].delta;
     }
 }
 
@@ -1110,17 +1590,16 @@ void find_and_update(uint32_t cpu, uint64_t latency, uint64_t tag,
     #endif
 
     #ifdef BOP_ON
-    uint16_t bop_num_on_time = 0;
+    uint16_t bop_num_on_time;
     uint64_t timely_addr[HISTORY_TABLE_SET*HISTORY_TABLE_WAY];
-    bop_num_on_time = history_table_bop_get(cpu, latency, line_addr, pages_addr, cycle);
+    bop_num_on_time = history_table_bop_get(cpu, latency, line_addr, timely_addr, cycle);
 
     //***********************bop*****************************//
-    for(uint32_t i = 0; i < pages_num_on_time ; i++)
+    for(uint32_t i = 0; i < bop_num_on_time ; i++)
     {
         int64_t delta = (line_addr & ADDR_MASK)-timely_addr[i];
         bop_deltas_table_update(cpu, delta);
     }
-    #else
     #endif
 
 }
@@ -1131,7 +1610,9 @@ void CACHE::l1d_prefetcher_initialize()
     latency_table_init(cpu);
     history_table_init(cpu);
     bop_deltas_table_init(cpu);
-
+    #ifdef BINGO_BOP_ON
+        prefetchers = vector<BOP>(NUM_CPUS, BOP((1 << LOG2_BLOCKS_PER_PAGE), RR_TABLE_SIZE, DEGREE));
+    #endif
     std::cout << "History Sets: " << HISTORY_TABLE_SET << std::endl;
     std::cout << "History Ways: " << HISTORY_TABLE_WAY << std::endl;
     std::cout << "BERTI Size: " << BERTI_TABLE_SIZE << std::endl;
@@ -1155,6 +1636,11 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
     ip = ((ip >> 1) ^ (ip >> 4));
     //ip = (ip >> 1) ^ (ip >> 4) ^ (ip >> 8);
     ip = ip & IP_MASK;
+
+    #ifdef BINGO_BOP_ON
+      bool bingo_bop_triger = false;      
+    #endif
+
     if (!cache_hit)
     {
         // This is a miss
@@ -1168,6 +1654,9 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
         {
             std::cout << "cache miss" << std::endl;
         }
+        #ifdef BINGO_BOP_ON
+            bingo_bop_triger = true;
+        #endif
 
     } else if (cache_hit && shadow_cache_is_pf(cpu, line_addr))
     {
@@ -1184,6 +1673,9 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                 line_addr);
 
         history_table_add(ip, cpu, line_addr); 
+        #ifdef BINGO_BOP_ON
+            bingo_bop_triger = true;
+        #endif
     } else
     {
         // Cache line access
@@ -1214,6 +1706,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
         std::cout << "IP hex is:"<< std::hex << ip <<" Line ADDR is:"<< std::hex << line_addr << std::dec << std::endl;
         std::cout << "Pages Addr is:"<< std::hex << ((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE) << std::dec << std::endl;
     }
+    std::cout << "Bingo_BOP" << std::endl;
     int launched = 0;
     #ifdef BERTI_IP_ON 
     if(!vberti_table_get(ip, cpu, stride))
@@ -1275,7 +1768,6 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
             }
         }
     }
-    #else
     #endif
 
     #ifdef BERTI_PAGES_ON
@@ -1287,7 +1779,6 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
         {
             std::cout << "Pages berti deltas no found" << std::endl;
         }
-        return;
     }
     else
     {        
@@ -1342,7 +1833,6 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
 
         }
     }
-    #else
     #endif
 
     #ifdef BOP_ON
@@ -1357,7 +1847,22 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
             launched++;
         }
     }
-    #else
+    #endif
+
+    #ifdef BINGO_BOP_ON
+        std::cout << "Bingo_BOP" << std::endl;
+        if(bingo_bop_triger == true)
+        {
+            /* call prefetcher and send prefetches */
+            //prefetchers是BOP类的一个数组，在CACHE初始化的时候同时进行初始化
+            vector<uint64_t> to_prefetch = prefetchers[cpu].access(line_addr);
+            for (auto &pf_block_number : to_prefetch) {
+                uint64_t pf_address = pf_block_number << LOG2_BLOCK_SIZE;
+                 std::cout << "Bingo_BOP"<< pf_address << std::endl;
+                /* champsim automatically ignores prefetches that cross page boundaries */
+                prefetch_line(cpu, ip, addr, pf_address, FILL_L1);
+            }
+        }
     #endif
 
     return;
@@ -1396,13 +1901,9 @@ void CACHE::l1d_prefetcher_cache_fill(uint64_t v_addr, uint64_t addr,
         find_and_update(cpu, latency, tag, cycle, line_addr);
     }
 
-    //for (int ii = 0; ii < SIZE_RR; ii++) 
-    //{
-    //    if (RR[cpu][ii] == v_evicted_addr)
-    //    {
-    //        RR[cpu][ii] = 0;
-    //    }
-    //}
+    #ifdef BINGO_BOP_ON
+        prefetchers[cpu].cache_fill(line_addr, (bool)prefetch);
+    #endif
 }
 
 void CACHE::l1d_prefetcher_final_stats()
