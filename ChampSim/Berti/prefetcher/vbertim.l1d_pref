@@ -12,8 +12,8 @@
 
 //******预取器开关*********//
 #define BERTI_IP_ON
-#define BERTI_PAGES_ON
-//#define BOP_ON
+// #define BERTI_PAGES_ON
+// #define BOP_ON
 
 std::mutex mtx;
 
@@ -1049,24 +1049,39 @@ void find_and_update(uint32_t cpu, uint64_t latency, uint64_t tag,
     uint64_t addr[HISTORY_TABLE_WAY];
     uint16_t num_on_time = 0;
 
-    uint16_t pages_num_on_time = 0;
-    uint64_t pages_addr[HISTORY_TABLE_SET*HISTORY_TABLE_WAY];
-
-    uint16_t bop_num_on_time = 0;
-    uint64_t timely_addr[HISTORY_TABLE_SET*HISTORY_TABLE_WAY];
-
+    #ifdef BERTI_IP_ON
     // Get the IPs that can launch a prefetch
     num_on_time = history_table_get(cpu, latency, tag, line_addr, ip, addr, cycle);
-    pages_num_on_time = history_table_pages_get(cpu, latency, line_addr, pages_addr, cycle);
-    bop_num_on_time = history_table_bop_get(cpu, latency, line_addr, pages_addr, cycle);
-
-    //***********************bop*****************************//
-    for(uint32_t i = 0; i < pages_num_on_time ; i++)
+        //***********************ip*****************************//
+    for (uint32_t i = 0; i < num_on_time; i++)
     {
-        int64_t delta = (line_addr & ADDR_MASK)-timely_addr[i];
-        bop_deltas_table_update(cpu, delta);
-    }
+        // Increase conf ip
+        if (i == 0) vberti_increase_conf_ip(tag, cpu);
+        
+        // Max number of strides that we can find
+        if (i >= MAX_HISTORY_IP) break;
 
+        // Add information into berti table
+        int64_t stride;
+        line_addr &= ADDR_MASK;
+
+        // Usually applications go from lower to higher memory position.
+        // The operation order is important (mainly because we allow
+        // negative strides)
+        stride = (int64_t) (line_addr - addr[i]);
+
+        if ((std::abs(stride) < (1 << STRIDE_MASK)))
+        {
+            // Only useful strides
+            vberti_table_add(ip[i], cpu, stride);
+        }
+    }
+    #endif
+
+    #ifdef BERTI_PAGES_ON
+    uint16_t pages_num_on_time = 0;
+    uint64_t pages_addr[HISTORY_TABLE_SET*HISTORY_TABLE_WAY];
+    pages_num_on_time = history_table_pages_get(cpu, latency, line_addr, pages_addr, cycle);
     //***********************pages*****************************//
     //access cache的时候还是需要更新pages_bertit的，只不过是在预取的时候，如果没有ip匹配的，那就使用pages_bertit
     for(uint32_t i = 0; i < pages_num_on_time ; i++)
@@ -1091,31 +1106,23 @@ void find_and_update(uint32_t cpu, uint64_t latency, uint64_t tag,
             //pages_berti_table_add((line_addr>>LOG2_BLOCKS_PER_PAGE), cpu, stride);
         }
     }
+    #else
+    #endif
 
-    //***********************ip*****************************//
-    for (uint32_t i = 0; i < num_on_time; i++)
+    #ifdef BOP_ON
+    uint16_t bop_num_on_time = 0;
+    uint64_t timely_addr[HISTORY_TABLE_SET*HISTORY_TABLE_WAY];
+    bop_num_on_time = history_table_bop_get(cpu, latency, line_addr, pages_addr, cycle);
+
+    //***********************bop*****************************//
+    for(uint32_t i = 0; i < pages_num_on_time ; i++)
     {
-        // Increase conf ip
-        if (i == 0) vberti_increase_conf_ip(tag, cpu);
-        
-        // Max number of strides that we can find
-        if (i >= MAX_HISTORY_IP) break;
-
-        // Add information into berti table
-        int64_t stride;
-        line_addr &= ADDR_MASK;
-
-        // Usually applications go from lower to higher memory position.
-        // The operation order is important (mainly because we allow
-        // negative strides)
-        stride = (int64_t) (line_addr - addr[i]);
-
-        if ((std::abs(stride) < (1 << STRIDE_MASK)))
-        {
-            // Only useful strides
-            vberti_table_add(ip[i], cpu, stride);
-        }
+        int64_t delta = (line_addr & ADDR_MASK)-timely_addr[i];
+        bop_deltas_table_update(cpu, delta);
     }
+    #else
+    #endif
+
 }
 
 void CACHE::l1d_prefetcher_initialize() 
@@ -1222,13 +1229,6 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
         {
                 std::cout << "IP berti deltas:" << std::endl;
         }
-        for (int i = 0; i < MAX_PF; i++) 
-        {
-            stride[i].conf = 0;
-            stride[i].stride = 0;
-            stride[i].rpl = R;
-        }
-        launched = 0;
         for (int i = 0; i < MAX_PF_LAUNCH; i++)
         {
             uint64_t p_addr = (line_addr + stride[i].stride) << LOG2_BLOCK_SIZE;
@@ -1275,6 +1275,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
             }
         }
     }
+    #else
     #endif
 
     #ifdef BERTI_PAGES_ON
@@ -1341,6 +1342,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
 
         }
     }
+    #else
     #endif
 
     #ifdef BOP_ON
@@ -1355,8 +1357,10 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
             launched++;
         }
     }
+    #else
     #endif
 
+    return;
     if(RECORD_DELTAS || RECORD_IP_ADDR)
     {
         mtx.unlock();
