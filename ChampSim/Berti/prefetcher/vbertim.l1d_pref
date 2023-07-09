@@ -2,14 +2,15 @@
 #include <sstream>
 #include <iostream> //reocrd
 #include <fstream>//record
+
 #include <bits/stdc++.h>
 #include <mutex> //atom ops
 #include <unordered_map>
 #include <unordered_set>
 
 //******debug开关********//
-#define RECORD_IP_ADDR true
-#define RECORD_DELTAS true
+#define RECORD_IP_ADDR false
+#define RECORD_DELTAS false
 #define LANZAR_INT 8
 
 //******预取器开关*********//
@@ -437,7 +438,10 @@ class BOP {
         vector<uint64_t> pred;
         for (int i = 1; i <= this->degree; i += 1) {
             if (this->prefetch_offset != 0 && is_inside_page(page_offset + i * this->prefetch_offset))
+            {
                 pred.push_back(block_number + i * this->prefetch_offset);
+                std::cout << this->prefetch_offset << std::endl;
+            }
             else {
                 if (this->debug)
                     cerr << "[BOP] X and X + " << i << " * D do not lie in the same memory page, no prefetch issued"
@@ -1610,7 +1614,7 @@ void CACHE::l1d_prefetcher_initialize()
     latency_table_init(cpu);
     history_table_init(cpu);
     bop_deltas_table_init(cpu);
-    #ifdef BINGO_BOP_ON
+    #ifdef BINGO_BOP_ON;
         prefetchers = vector<BOP>(NUM_CPUS, BOP((1 << LOG2_BLOCKS_PER_PAGE), RR_TABLE_SIZE, DEGREE));
     #endif
     std::cout << "History Sets: " << HISTORY_TABLE_SET << std::endl;
@@ -1706,7 +1710,6 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
         std::cout << "IP hex is:"<< std::hex << ip <<" Line ADDR is:"<< std::hex << line_addr << std::dec << std::endl;
         std::cout << "Pages Addr is:"<< std::hex << ((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE) << std::dec << std::endl;
     }
-    std::cout << "Bingo_BOP" << std::endl;
     int launched = 0;
     #ifdef BERTI_IP_ON 
     if(!vberti_table_get(ip, cpu, stride))
@@ -1850,7 +1853,6 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
     #endif
 
     #ifdef BINGO_BOP_ON
-        std::cout << "Bingo_BOP" << std::endl;
         if(bingo_bop_triger == true)
         {
             /* call prefetcher and send prefetches */
@@ -1858,9 +1860,8 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
             vector<uint64_t> to_prefetch = prefetchers[cpu].access(line_addr);
             for (auto &pf_block_number : to_prefetch) {
                 uint64_t pf_address = pf_block_number << LOG2_BLOCK_SIZE;
-                 std::cout << "Bingo_BOP"<< pf_address << std::endl;
                 /* champsim automatically ignores prefetches that cross page boundaries */
-                prefetch_line(cpu, ip, addr, pf_address, FILL_L1);
+                prefetch_line(ip, addr, pf_address, FILL_L1,1);
             }
         }
     #endif
