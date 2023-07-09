@@ -58,7 +58,7 @@ def read_config(path: str) -> Dict[str, Any]:
     with open(path, 'r') as fw:
         CONFIGS = json.load(fw)
     CONFIGS["simulator_path"] = CURRENT_DIRECTORY+"/.."
-    CONFIGS["results_dir"] = CONFIGS["simulator_path"]+"/"+CONFIGS["results_dir"]
+    #CONFIGS["results_dir"] = CONFIGS["simulator_path"]+"/"+CONFIGS["results_dir"]
     CONFIGS["stats_dir"] = CONFIGS["simulator_path"]+"/"+CONFIGS["stats_dir"]
     
     return CONFIGS
@@ -163,8 +163,11 @@ def parse_file(file: str) -> Tuple[str, str, int, Dict[str, Any]]:
 def parse_origin_results() -> None:
     global ROI_ORIGIN_STATS
     res_files1 = glob.glob(os.path.join(CONFIGS["baseline_results_dir"], '*.xz'))
-    res_files2 = glob.glob(os.path.join(CONFIGS["results_dir"], '*.xz'))
-    all_files = res_files1 + res_files2
+    all_files = res_files1
+    for res_files in CONFIGS["results_dir"]:
+        all_files += glob.glob(os.path.join(CONFIGS["simulator_path"]+"/"+ res_files, '*.xz'))
+    #CONFIGS["results_dir"] = CONFIGS["simulator_path"]+"/"+CONFIGS["results_dir"]
+    #res_files2 = glob.glob(os.path.join(CONFIGS["results_dir"], '*.xz'))
     with multiprocessing.Pool(multiprocessing.cpu_count()) as pool:
         results = pool.map(parse_file, all_files)
         pool.close()
