@@ -15,9 +15,9 @@
 
 //******预取器开关*********//
 #define BERTI_IP_ON
-#define BERTI_PAGES_ON
+//#define BERTI_PAGES_ON
 //#define BOP_ON
-#define BINGO_BOP_ON
+//#define BINGO_BOP_ON
 
 std::mutex mtx;
 
@@ -440,7 +440,6 @@ class BOP {
             if (this->prefetch_offset != 0 && is_inside_page(page_offset + i * this->prefetch_offset))
             {
                 pred.push_back(block_number + i * this->prefetch_offset);
-                std::cout << this->prefetch_offset << std::endl;
             }
             else {
                 if (this->debug)
@@ -1614,7 +1613,7 @@ void CACHE::l1d_prefetcher_initialize()
     latency_table_init(cpu);
     history_table_init(cpu);
     bop_deltas_table_init(cpu);
-    #ifdef BINGO_BOP_ON;
+    #ifdef BINGO_BOP_ON
         prefetchers = vector<BOP>(NUM_CPUS, BOP((1 << LOG2_BLOCKS_PER_PAGE), RR_TABLE_SIZE, DEGREE));
     #endif
     std::cout << "History Sets: " << HISTORY_TABLE_SET << std::endl;
