@@ -137,8 +137,6 @@ def parse_file(file: str) -> Tuple[str, str, int, Dict[str, Any]]:
                     load_miss = int(matches.group(3))
                     entry[evaluate_cache+" Accesses"][current_cpu] = load_request
                     entry[evaluate_cache+" Misses"][current_cpu] = load_miss
-                    #if(trace == "462.libquantum-714B"):
-                        #print(trace,prefetcher,evaluate_cache,current_cpu,entry[evaluate_cache+" Accesses"][current_cpu])
                 pattern2 = '^' + evaluate_cache + '.*' + 'PREFETCH' + '.*' + 'REQUESTED:\s+(\d+)\s+ISSUED:\s+(\d+)\s+USEFUL:\s+(\d+)\s+USELESS:\s+(\d+)\s*$'
                 matches2 = re.search(pattern2, line)
                 if matches2:
@@ -224,6 +222,9 @@ def cal_final_results():
                 for evaluate_cache in ["L1D","L2C","LLC"]:
                     # print("TRAFFIC: ", entry['Accesses'][cpu], entry['Prefetches'][cpu], baseline['Accesses'][cpu])
                     #scale_coef: baseline的cache的访问次数，除以prefetch的访问次数
+                    # if isinstance(entry[evaluate_cache+' Accesses'][cpu], str):
+                    #     print(evaluate_cache,trace,prefetcher,entry[evaluate_cache+' Accesses'][cpu])
+                    #     entry[evaluate_cache+' Accesses'][cpu]=1
                     scale_coef = 1.0 * (baseline[evaluate_cache+' Accesses'][cpu] / entry[evaluate_cache+' Accesses'][cpu])
                     
                     #print(entry[evaluate_cache+' Accesses'][cpu], entry[evaluate_cache+' Prefetches'][cpu], baseline[evaluate_cache+' Accesses'][cpu])
@@ -235,9 +236,11 @@ def cal_final_results():
                         print(trace)
                         print(prefetcher)
                         print(evaluate_cache)
-                    
+                    if isinstance(entry[evaluate_cache+' Accesses'][cpu], str):
+                        print(evaluate_cache,prefetcher, "scale_coef: ", scale_coef,baseline[evaluate_cache+ ' Misses'][cpu],entry[evaluate_cache+ ' Misses'][cpu])
+                        entry[evaluate_cache+ ' Misses'][cpu]=1
                     entry[evaluate_cache+ ' Coverage'][cpu] = 1.0 - 1.0 * entry[evaluate_cache+ ' Misses'][cpu] / baseline[evaluate_cache+' Misses'][cpu] * scale_coef
-                    # print(cpu,prefetcher, "scale_coef: ", scale_coef,baseline['Misses'][cpu],entry['Misses'][cpu],entry['Coverage'][cpu])
+                    
                     entry[evaluate_cache+' Uncovered'][cpu] = 1.0 - entry[evaluate_cache+' Coverage'][cpu]
                     entry[evaluate_cache+' Overprediction'][cpu] = 1.0 * entry[evaluate_cache+' Non-useful Prefetches'][cpu] / baseline[evaluate_cache+' Misses'][cpu] * scale_coef
                     
@@ -435,6 +438,7 @@ def cal_final_results():
             
 def record_results(sort_item=None):
     res_name = CONFIGS["stats_dir"] + '/'+ CONFIGS["date"] + '.csv'
+    print(res_name)
     fig_stat_name = CONFIGS["stats_dir"]+ "_figs" + '/' + CONFIGS["date"] + '.csv'
     
     sort_stat={}
@@ -663,7 +667,8 @@ def bingo_evaluate():
     
     # ("1core_all_miss_rate_80M", "output_prefetchers"),
     
-    ("1core_PQ_32_compare_all_80M", "output_prefetchers"),
+    #("1core_PQ_32_compare_all_80M", "output_prefetchers"),
+    ("1core_PQ_32_compare_mem_tense","output_prefetchers"),
 
 
     # ("1core_rate", "output_prefetchers"),
