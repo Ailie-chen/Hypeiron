@@ -14,10 +14,10 @@
 #define LANZAR_INT 8
 
 //******预取器开关*********//
-#define BERTI_IP_ON
+//#define BERTI_IP_ON
 //#define BERTI_PAGES_ON
 //#define BOP_ON
-//#define BINGO_BOP_ON
+#define BINGO_BOP_ON
 
 std::mutex mtx;
 
@@ -333,8 +333,9 @@ class BestOffsetLearning {
         //每次访问都对index_to_test加1，对不同的offset进行遍历测试
         Entry &entry = this->offset_list[this->index_to_test];
         //由于预取不会超过页面的大小，所以这个地方的寻找的X和X+D也应该在同一个页面，后续在L1中使用的时候，需要做一些改进
-        bool found =
-            is_inside_page(page_offset - entry.offset) && recent_requests_table.find(block_number - entry.offset);
+
+        //添加跨页预取,考虑清楚，这个entry.offset不会为负值的
+        bool found = recent_requests_table.find(block_number - entry.offset);
         if (this->debug) {
             cerr << "[BOL] testing offset=" << entry.offset << " with score=" << entry.score << endl;
             cerr << "[BOL] match=" << found << endl;
@@ -437,7 +438,8 @@ class BOP {
 
         vector<uint64_t> pred;
         for (int i = 1; i <= this->degree; i += 1) {
-            if (this->prefetch_offset != 0 && is_inside_page(page_offset + i * this->prefetch_offset))
+            //修改可以跨页预取
+            if (this->prefetch_offset != 0)
             {
                 pred.push_back(block_number + i * this->prefetch_offset);
             }
@@ -467,8 +469,10 @@ class BOP {
             return;
         if (this->prefetch_offset != 0 && !prefetch)
             return;
-        if (!this->is_inside_page(page_offset - this->prefetch_offset))
-            return;
+        // if (!this->is_inside_page(page_offset - this->prefetch_offset) )
+        // {   //添加跨页预取
+        //     return;
+        // }
         //当预取回来的时候，会向RR Table中插入发出预取访问的基地址
         this->recent_requests_table.insert(block_number - this->prefetch_offset);
     }
