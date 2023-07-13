@@ -667,8 +667,8 @@ def bingo_evaluate():
     
     # ("1core_all_miss_rate_80M", "output_prefetchers"),
     
-    #("1core_PQ_32_compare_all_80M", "output_prefetchers"),
-    ("1core_PQ_32_compare_mem_tense","output_prefetchers"),
+    #("1core_spec_compare_all_80M", "output_prefetchers"),
+    ("1core_spec_compare_mem_tense","output_prefetchers"),
 
 
     # ("1core_rate", "output_prefetchers"),

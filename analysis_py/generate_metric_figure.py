@@ -4,12 +4,12 @@ import numpy as np
 import os
 
 dates=['0703','0704']
-data_file_path='evaluation/all_results_figs/'
+traces=['spec2k17']
 metrics=['IPC','IPCI','L1D Accuracy','L1D Coverage']
-figure_res='figures_res/'
 
 
-def draw_chart_for_metric(data, metric):
+
+def draw_chart_for_metric(data, metric,figure_res):
     font = {
         "family": "Arial",
         "color": "black",
@@ -34,10 +34,10 @@ def draw_chart_for_metric(data, metric):
 
     # 生成每个预取器的条形图
     # max_v, min_v = np.NINF, np.inf
-    if(metric == 'L1D Accuracy'):
-        max_v, min_v = 1.0, 0
-    else:
-        max_v, min_v = 1.0, -0.2
+    metric_data_df = metric_data.iloc[:,2:2+num_benchmarks]
+    metric_data_df = metric_data_df.replace('-', 0).astype(float)
+    max_v = metric_data_df.max().max()
+    min_v = metric_data_df.min().min()
     for i in range(num_prefetchers):
         value = metric_data.iloc[i,2:2+num_benchmarks]
         value = value.replace('-', 0)
@@ -61,12 +61,16 @@ def draw_chart_for_metric(data, metric):
     ax.set_title(f'{metric}', fontsize=25)
     ax.legend()
     plt.savefig(f'{figure_res}/{date}/{metric}.png',dpi=300) 
+    plt.close()
 
 # 在这里替换为你想要的指标
 if __name__ == "__main__":  
     for date in dates:
-        data = pd.read_csv(data_file_path + date + '.csv', header=None).T
-        if not os.path.exists(figure_res + date + '/'):
-            os.makedirs(figure_res + date + '/')
-        for metric in metrics:
-            draw_chart_for_metric(data,metric)
+        for trace in traces:
+            data_file_path='evaluationmemtense/'+ trace + '/'+'all_results_figs/'
+            figure_res='memtensefigures_res/'+ trace + '/'
+            data = pd.read_csv(data_file_path + date + '.csv', header=None).T
+            if not os.path.exists(figure_res + date + '/'):
+                os.makedirs(figure_res + date + '/')
+            for metric in metrics:
+                draw_chart_for_metric(data,metric,figure_res)
