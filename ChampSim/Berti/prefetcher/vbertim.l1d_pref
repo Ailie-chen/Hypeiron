@@ -14,10 +14,11 @@
 #define LANZAR_INT 8
 
 //******预取器开关*********//
-//#define BERTI_IP_ON
-//#define BERTI_PAGES_ON
+#define BERTI_IP_ON
+#define BERTI_PAGES_ON
 //#define BOP_ON
 #define BINGO_BOP_ON
+#define CP_BINGO_BOP_ON
 
 std::mutex mtx;
 
@@ -333,9 +334,13 @@ class BestOffsetLearning {
         //每次访问都对index_to_test加1，对不同的offset进行遍历测试
         Entry &entry = this->offset_list[this->index_to_test];
         //由于预取不会超过页面的大小，所以这个地方的寻找的X和X+D也应该在同一个页面，后续在L1中使用的时候，需要做一些改进
-
-        //添加跨页预取,考虑清楚，这个entry.offset不会为负值的
-        bool found = recent_requests_table.find(block_number - entry.offset);
+        #ifdef BINGO_BOP_ON
+            bool found =
+                is_inside_page(page_offset - entry.offset) && recent_requests_table.find(block_number - entry.offset);
+        #endif
+        #ifdef CP_BINGO_BOP_ON
+            bool found = recent_requests_table.find(block_number - entry.offset);            
+        #endif
         if (this->debug) {
             cerr << "[BOL] testing offset=" << entry.offset << " with score=" << entry.score << endl;
             cerr << "[BOL] match=" << found << endl;
@@ -357,7 +362,7 @@ class BestOffsetLearning {
             /* The current learning phase finishes at the end of a round when either of the two following events happens
              * first: one of the scores equals SCOREMAX, or the number of rounds equals ROUNDMAX (a fixed parameter). */
             if (this->best_score >= SCORE_MAX || this->round == ROUND_MAX) {
-                if (this->best_score <= BAD_SCORE)
+                if (this->best_score <= BAD_SCORE || (this->best_score < SCORE_MAX || this->round == ROUND_MAX))
                     this->global_best_offset = 0; /* turn off prefetching */
                 else
                     this->global_best_offset = this->local_best_offset;
@@ -438,17 +443,31 @@ class BOP {
 
         vector<uint64_t> pred;
         for (int i = 1; i <= this->degree; i += 1) {
-            //修改可以跨页预取
-            if (this->prefetch_offset != 0)
-            {
-                pred.push_back(block_number + i * this->prefetch_offset);
-            }
-            else {
+            #ifdef BINGO_BOP_ON
+                if (this->prefetch_offset != 0 && is_inside_page(page_offset + i * this->prefetch_offset))
+                {
+                    pred.push_back(block_number + i * this->prefetch_offset);
+                }
+                else {
                 if (this->debug)
                     cerr << "[BOP] X and X + " << i << " * D do not lie in the same memory page, no prefetch issued"
                          << endl;
                 break;
             }
+            #endif
+            #ifdef CP_BINGO_BOP_ON
+                 if (this->prefetch_offset != 0)
+                {
+                    pred.push_back(block_number + i * this->prefetch_offset);
+                }
+                else {
+                    if (this->debug)
+                        cerr << "[BOP] X and X + " << i << " * D do not lie in the same memory page, no prefetch issued"
+                            << endl;
+                    break;
+                }
+            #endif
+            
         }
 
         int old_offset = this->prefetch_offset;
@@ -469,10 +488,10 @@ class BOP {
             return;
         if (this->prefetch_offset != 0 && !prefetch)
             return;
-        // if (!this->is_inside_page(page_offset - this->prefetch_offset) )
-        // {   //添加跨页预取
-        //     return;
-        // }
+        #ifdef BINGO_BOP_ON
+            if (!this->is_inside_page(page_offset - this->prefetch_offset))
+                return;
+        #endif
         //当预取回来的时候，会向RR Table中插入发出预取访问的基地址
         this->recent_requests_table.insert(block_number - this->prefetch_offset);
     }
