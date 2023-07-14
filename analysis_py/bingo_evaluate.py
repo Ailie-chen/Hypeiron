@@ -518,7 +518,7 @@ def record_results(sort_item=None):
                     # print(trace,prefetcher,metric_value)
                     # line.append(metric_value)
                     if(field == "IPCI"):
-                        line.append(metric_value-1)
+                        line.append(metric_value)
                     else:
                         line.append(metric_value)
             print(','.join([trace] + [str(value) for value in line] ), file=f)
@@ -668,7 +668,7 @@ def bingo_evaluate():
     # ("1core_all_miss_rate_80M", "output_prefetchers"),
     
     #("1core_spec_compare_all_80M", "output_prefetchers"),
-    ("1core_spec_compare_mem_tense","output_prefetchers"),
+    ("1core_spec2k17_compare_mem_tense","output_prefetchers"),
 
 
     # ("1core_rate", "output_prefetchers"),
