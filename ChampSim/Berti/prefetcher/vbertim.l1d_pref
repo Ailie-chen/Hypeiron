@@ -18,10 +18,11 @@
 #define BERTI_PAGES_ON
 //#define BOP_ON
 #define BINGO_BOP_ON
-//#define CONSTRAIN_BOP
+#define CONSTRAIN_BOP
 //#define CP_BINGO_BOP_ON
-//#define BOP_L1
-#define BOP_L2
+#define BOP_L1
+//#define BOP_L2
+#define BOP_DEBUG
 
 std::mutex mtx;
 
@@ -366,10 +367,18 @@ class BestOffsetLearning {
              * first: one of the scores equals SCOREMAX, or the number of rounds equals ROUNDMAX (a fixed parameter). */
             if (this->best_score >= SCORE_MAX || this->round == ROUND_MAX) {
                 #ifdef CONSTRAIN_BOP
-                    if (this->best_score <= BAD_SCORE || (this->best_score < SCORE_MAX && this->round == ROUND_MAX))
+                    if (this->best_score <= BAD_SCORE || (this->best_score < SCORE_MAX && this->round == ROUND_MAX)){
                         this->global_best_offset = 0; /* turn off prefetching */
-                    else
+                        #ifdef BOP_DEBUG
+                            std::cout << "OFF BOP: " << this->best_score << " "<< this->global_best_offset << std::endl;
+                        #endif
+                    }
+                    else{
                         this->global_best_offset = this->local_best_offset;
+                        #ifdef BOP_DEBUG
+                            std::cout<< "BOP ON: " << this->best_score << " "<< this->global_best_offset << std::endl;
+                        #endif
+                    }
                 #else
                     if (this->best_score <= BAD_SCORE)
                         this->global_best_offset = 0; /* turn off prefetching */
@@ -1659,10 +1668,9 @@ void CACHE::l1d_prefetcher_initialize()
 void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit,
         uint8_t type, uint8_t critical_ip_flag)
 {
-    if(RECORD_DELTAS || RECORD_IP_ADDR)
-    {
+    #ifdef BOP_DEBUG
         mtx.lock();
-    }
+    #endif
     if(RECORD_IP_ADDR)
     {
         std::cout << "A access:" << std::endl;
@@ -1743,7 +1751,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
         std::cout << "IP hex is:"<< std::hex << ip <<" Line ADDR is:"<< std::hex << line_addr << std::dec << std::endl;
         std::cout << "Pages Addr is:"<< std::hex << ((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE) << std::dec << std::endl;
     }
-    int launched = 0;
+    int launched_ip = 0;
     #ifdef BERTI_IP_ON 
     if(!vberti_table_get(ip, cpu, stride))
     {
@@ -1769,6 +1777,9 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
 
                 int fill_level = FILL_L1;
                 float mshr_load = ((float) MSHR.occupancy / (float) MSHR_SIZE) * 100;
+                #ifdef BOP_DEBUG
+                    std::cout << "IP MSHR: "<< mshr_load <<"sconf: " << stride[i].conf << "stride: "<< stride[i].stride <<std::endl;
+                #endif
 
                 // Level of prefetching depends son CONFIDENCE
                 if (stride[i].rpl == L1 && mshr_load < MSHR_LIMIT)
@@ -1799,15 +1810,24 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                     {
                         std::cout << "prefetch"<< std::endl;
                     }
-                    launched++;
+                    launched_ip++;
                 }
             }
         }
+        #ifdef BOP_DEBUG
+            std::cout << "IP NUMS: "<< launched <<std::endl;
+        #endif
     }
     #endif
 
     #ifdef BERTI_PAGES_ON
-    launched = 0;
+    for (int i = 0; i < MAX_PF; i++) 
+    {
+        stride[i].conf = 0;
+        stride[i].stride = 0;
+        stride[i].rpl = R;
+    }
+    launched_pages = 0;
     //*********************pages prefetch*********************//
     if (!pages_berti_table_get(((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) 
     {
@@ -1833,6 +1853,9 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
 
                 int fill_level = FILL_L1;
                 float mshr_load = ((float) MSHR.occupancy / (float) MSHR_SIZE) * 100;
+                #ifdef BOP_DEBUG
+                    std::cout << "PAGES MSHR: "<< mshr_load <<"sconf: " << stride[i].conf << "stride: "<< stride[i].stride <<std::endl;
+                #endif
 
                 // Level of prefetching depends son CONFIDENCE
                 if (stride[i].rpl == L1 && mshr_load < MSHR_LIMIT)
@@ -1863,16 +1886,19 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                     {
                         std::cout << "prefetch"<< std::endl;
                     }
-                    launched++;
+                    launched_pages++;
                 }
             }
 
         }
+        #ifdef BOP_DEBUG
+            std::cout << "PAGES NUMS: "<< launched <<std::endl;
+        #endif
     }
     #endif
 
     #ifdef BOP_ON
-    launched = 0;
+    launched_bop = 0;
     //***************bop prefetch******************//
     if(bop_pf_init_finish[cpu] == true)
     {
@@ -1886,6 +1912,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
     #endif
 
     #ifdef BINGO_BOP_ON
+        launched = 0;
         if(bingo_bop_triger == true)
         {
             /* call prefetcher and send prefetches */
@@ -1894,21 +1921,31 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
             for (auto &pf_block_number : to_prefetch) {
                 uint64_t pf_address = pf_block_number << LOG2_BLOCK_SIZE;
                 /* champsim automatically ignores prefetches that cross page boundaries */
-                #ifdef BOP_L1
-                    prefetch_line(ip, addr, pf_address, FILL_L1,1);
+                float mshr_load = ((float) MSHR.occupancy / (float) MSHR_SIZE) * 100;
+                #ifdef BOP_DEBUG
+                    std::cout << "BOP L1 " << "MSHR: " << mshr_load <<std::endl;
                 #endif
-                #ifdef BOP_L2
-                    prefetch_line(ip, addr, pf_address, FILL_L2,1);
-                #endif
+                if (!latency_table_get(p_addr, cpu)){
+                    if((mshr_load < (MSHR_LIMIT + 10)) && ((launched_ip + launched_pages)< MAX_PF_LAUNCH))
+                    {
+                        prefetch_line(ip, addr, pf_address, FILL_L1,1);
+                    }
+                    {
+                        prefetch_line(ip, addr, pf_address, FILL_L2,1);
+                    }
+                }
+                launched++;
             }
         }
+        #ifdef BOP_DEBUG
+            std::cout << "BOP NUMS " << launched <<std::endl;
+        #endif
     #endif
 
     return;
-    if(RECORD_DELTAS || RECORD_IP_ADDR)
-    {
+    #ifdef BOP_DEBUG
         mtx.unlock();
-    }
+    #endif
 }
 
 void CACHE::l1d_prefetcher_notify_about_dtlb_eviction(uint64_t addr, 
