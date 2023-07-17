@@ -18,7 +18,10 @@
 #define BERTI_PAGES_ON
 //#define BOP_ON
 #define BINGO_BOP_ON
-#define CP_BINGO_BOP_ON
+//#define CONSTRAIN_BOP
+//#define CP_BINGO_BOP_ON
+//#define BOP_L1
+#define BOP_L2
 
 std::mutex mtx;
 
@@ -362,10 +365,18 @@ class BestOffsetLearning {
             /* The current learning phase finishes at the end of a round when either of the two following events happens
              * first: one of the scores equals SCOREMAX, or the number of rounds equals ROUNDMAX (a fixed parameter). */
             if (this->best_score >= SCORE_MAX || this->round == ROUND_MAX) {
-                if (this->best_score <= BAD_SCORE || (this->best_score < SCORE_MAX || this->round == ROUND_MAX))
-                    this->global_best_offset = 0; /* turn off prefetching */
-                else
-                    this->global_best_offset = this->local_best_offset;
+                #ifdef CONSTRAIN_BOP
+                    if (this->best_score <= BAD_SCORE || (this->best_score < SCORE_MAX && this->round == ROUND_MAX))
+                        this->global_best_offset = 0; /* turn off prefetching */
+                    else
+                        this->global_best_offset = this->local_best_offset;
+                #else
+                    if (this->best_score <= BAD_SCORE)
+                        this->global_best_offset = 0; /* turn off prefetching */
+                    else
+                        this->global_best_offset = this->local_best_offset;
+                #endif
+
                 if (this->debug) {
                     cerr << "[BOL] learning phase finished, winner=" << this->global_best_offset << endl;
                     cerr << this->log();
@@ -411,7 +422,7 @@ class BestOffsetLearning {
     int local_best_offset = 0;
     int global_best_offset = 1;
 
-    const int SCORE_MAX = 31;
+    const int SCORE_MAX = 32; //默认32
     const int ROUND_MAX = 100;
     const int BAD_SCORE = 1;
 
@@ -1883,7 +1894,12 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
             for (auto &pf_block_number : to_prefetch) {
                 uint64_t pf_address = pf_block_number << LOG2_BLOCK_SIZE;
                 /* champsim automatically ignores prefetches that cross page boundaries */
-                prefetch_line(ip, addr, pf_address, FILL_L1,1);
+                #ifdef BOP_L1
+                    prefetch_line(ip, addr, pf_address, FILL_L1,1);
+                #endif
+                #ifdef BOP_L2
+                    prefetch_line(ip, addr, pf_address, FILL_L2,1);
+                #endif
             }
         }
     #endif
