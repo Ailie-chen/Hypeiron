@@ -22,7 +22,7 @@
 //#define CP_BINGO_BOP_ON
 #define BOP_L1
 //#define BOP_L2
-#define BOP_DEBUG
+//#define BOP_DEBUG
 
 std::mutex mtx;
 
@@ -1815,7 +1815,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
             }
         }
         #ifdef BOP_DEBUG
-            std::cout << "IP NUMS: "<< launched <<std::endl;
+            std::cout << "IP NUMS: "<< launched_ip <<std::endl;
         #endif
     }
     #endif
@@ -1827,7 +1827,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
         stride[i].stride = 0;
         stride[i].rpl = R;
     }
-    launched_pages = 0;
+    int launched_pages = 0;
     //*********************pages prefetch*********************//
     if (!pages_berti_table_get(((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) 
     {
@@ -1842,7 +1842,6 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
         {
             std::cout << "Pages berti deltas:" << std::endl;
         }
-        launched = 0;
         for (int i = 0; i < MAX_PF_LAUNCH; i++)
         {
             uint64_t p_addr = (line_addr + stride[i].stride) << LOG2_BLOCK_SIZE;
@@ -1892,13 +1891,13 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
 
         }
         #ifdef BOP_DEBUG
-            std::cout << "PAGES NUMS: "<< launched <<std::endl;
+            std::cout << "PAGES NUMS: "<< launched_pages <<std::endl;
         #endif
     }
     #endif
 
     #ifdef BOP_ON
-    launched_bop = 0;
+    int launched_bop = 0;
     //***************bop prefetch******************//
     if(bop_pf_init_finish[cpu] == true)
     {
@@ -1912,7 +1911,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
     #endif
 
     #ifdef BINGO_BOP_ON
-        launched = 0;
+    int launched_bop = 0;
         if(bingo_bop_triger == true)
         {
             /* call prefetcher and send prefetches */
@@ -1925,7 +1924,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                 #ifdef BOP_DEBUG
                     std::cout << "BOP L1 " << "MSHR: " << mshr_load <<std::endl;
                 #endif
-                if (!latency_table_get(p_addr, cpu)){
+                if (!latency_table_get(pf_address, cpu)){
                     if((mshr_load < (MSHR_LIMIT + 10)) && ((launched_ip + launched_pages)< MAX_PF_LAUNCH))
                     {
                         prefetch_line(ip, addr, pf_address, FILL_L1,1);
@@ -1933,12 +1932,12 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                     {
                         prefetch_line(ip, addr, pf_address, FILL_L2,1);
                     }
-                }
-                launched++;
+                    launched_bop++;
+                }               
             }
         }
         #ifdef BOP_DEBUG
-            std::cout << "BOP NUMS " << launched <<std::endl;
+            std::cout << "BOP NUMS " << launched_bop <<std::endl;
         #endif
     #endif
 
