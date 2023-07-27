@@ -1,6 +1,8 @@
 #ifndef VBERTI_H_
 #define VBERTI_H_
 
+#define PREFETCHER_CLASS_DEBUG
+
 #include "vberti_size.h"
 
 #include "cache.h"
@@ -14,7 +16,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-# define LOG2_BLOCKS_PER_PAGE            (6)
+//# define LOG2_BLOCKS_PER_PAGE            (6)
 
 // vBerti defines
 # define LATENCY_TABLE_SIZE           (L1D_MSHR_SIZE + 16)
@@ -184,3 +186,9 @@ void bop_deltas_table_init(uint32_t cpu);
 //为BINGO_BOP进行定义
 # define RR_TABLE_SIZE  (256)
 # define DEGREE         (32)
+
+#ifdef PREFETCHER_CLASS_DEBUG
+//对应的decode版本定义在cache.cc和cache.h中
+//metadata[8:7]来做标记：01：IP， 10：Pages 11：bop
+uint32_t metadata_encode(uint32_t metadata_origin, uint32_t prefetcher_type);
+#endif

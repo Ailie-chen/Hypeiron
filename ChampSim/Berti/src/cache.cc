@@ -1477,6 +1477,14 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
         // handle the oldest entry
         if ((RQ.entry[RQ.head].event_cycle <= current_core_cycle[read_cpu]) && (RQ.occupancy > 0)) {
             int index = RQ.head;
+            #ifdef MEMORY_ACCESS_PATTERN_DEBUG
+                uint64_t line_addr_debug = (RQ.entry[RQ.head].full_addr >> LOG2_BLOCK_SIZE); // Line addr  
+                uint64_t page_addr_debug = (line_addr_debug >> LOG2_BLOCKS_PER_PAGE);
+                if(cache_type == IS_L1D && (RQ.entry[index].type == RFO || RQ.entry[index].type == LOAD))
+                {
+                    std::cout << page_addr_debug << ' '<< RQ.entry[index].ip << std::endl;
+                }
+            #endif
 
             // access cache
             uint32_t set = get_set(RQ.entry[index].address);
@@ -1860,10 +1868,24 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                 if (block[set][way].prefetch) {
                     pf_useful++;
                     block[set][way].prefetch = 0;
-
-                    //Neelu: IPCP prefetch stats
-                    if(block[set][way].pref_class < 5)
-                        pref_useful[cpu][block[set][way].pref_class]++;
+                    
+                    #ifdef PREFETCHER_CLASS_DEBUG
+                        switch(block[set][way].pref_class){
+                            case 1:
+                                ip_useful++;
+                                break;
+                            case 2:
+                                pages_useful++;
+                                break;
+                            case 3:
+                                bop_useful++;
+                                break;
+                        }
+                    #else
+                        //Neelu: IPCP prefetch stats
+                        if(block[set][way].pref_class < 5)
+                            pref_useful[cpu][block[set][way].pref_class]++;
+                    #endif
 
                 }
                 block[set][way].used = 1;
@@ -2211,7 +2233,25 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                                         ++pf_late;
                                 }
                                 else
+                                {
                                     ++pf_late;//@v Late prefetch-> on-demand requests hit in MSHR
+
+                                    #ifdef PREFETCHER_CLASS_DEBUG
+                                        if(MSHR.entry[mshr_index].type == PREFETCH && cache_type == IS_L1D){
+                                            switch(metadata_decode(MSHR.entry[mshr_index].pf_metadata)){
+                                                case 1:
+                                                    ip_pf_late++;
+                                                    break;
+                                                case 2:
+                                                    pages_pf_late++;
+                                                    break;
+                                                case 3:
+                                                    bop_pf_late++;
+                                                    break;
+                                            }
+                                        }
+                                    #endif
+                                }
 
                                 MSHR.entry[mshr_index] = RQ.entry[index];
 
@@ -2612,7 +2652,10 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                             //Neelu: Calculting number of prefetches issued from L1D to L2C i.e. the next level
                             //这个时候prefetch_count++没有命中，就需要发往下一级
                             if(cache_type == IS_L1D)
+                            {
                                 prefetch_count++;
+                
+                            }
 
 
                             //Neelu: checking fill level for prefetches going to lower level. 
@@ -2664,6 +2707,24 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                                     if (lower_level->get_occupancy(3, PQ.entry[index].address) == lower_level->get_size(3, PQ.entry[index].address))
                                         miss_handled = 0;
                                     else {
+                                        #ifdef PREFETCHER_CLASS_DEBUG
+                                            if(cache_type == IS_L1D && PQ.entry[index].type == PREFETCH)
+                                            {
+                                                uint32_t prefetcher_type = metadata_decode(PQ.entry[index].pf_metadata);
+                                                switch(prefetcher_type)
+                                                {
+                                                    case 1:
+                                                        ip_to_lower_level++;
+                                                        break;
+                                                    case 2:
+                                                        pages_to_lower_level++;
+                                                        break;
+                                                    case 3:
+                                                        bop_to_lower_level++;
+                                                        break;
+                                                }
+                                            }
+                                        #endif
                                         ++pf_lower_level_test;
                                         // run prefetcher on prefetches from higher caches
                                         //这里低级的cache处理高级cache预取的请求需要加一些pf_metadata的信息,填充到低级别的cache
@@ -2964,8 +3025,12 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                     block[set][way].instruction = 0;
             }
 
-            //Neelu: setting IPCP prefetch class
-            block[set][way].pref_class = ((packet->pf_metadata & PREF_CLASS_MASK) >> NUM_OF_STRIDE_BITS);
+            #ifdef PREFETCHER_CLASS_DEBUG
+                block[set][way].pref_class = metadata_decode(packet->pf_metadata);
+            #else
+                //Neelu: setting IPCP prefetch class
+                block[set][way].pref_class = ((packet->pf_metadata & PREF_CLASS_MASK) >> NUM_OF_STRIDE_BITS);
+            #endif
 
             if (block[set][way].prefetch) 
             {
@@ -3626,6 +3691,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
 
         int CACHE::prefetch_line(uint64_t ip, uint64_t base_addr, uint64_t pf_addr, int pf_fill_level, uint32_t prefetch_metadata) /*, uint64_t prefetch_id)*/		//Neelu: commented. 
         {
+
             //	if(cache_type == IS_L2C)
             //		cout<<"Aye Aye, Captain, requested.";
 
@@ -3633,6 +3699,24 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
             pf_requested++;
             DP ( if (warmup_complete[cpu]) {cout << "entered prefetch_line, occupancy = " << PQ.occupancy << "SIZE=" << PQ.SIZE << endl; });
             if (PQ.occupancy < PQ.SIZE) {
+                #ifdef PREFETCHER_CLASS_DEBUG
+                   if(cache_type == IS_L1D)
+                    {
+                        uint32_t prefetcher_type = metadata_decode(prefetch_metadata);
+                        switch(prefetcher_type)
+                        {
+                            case 1:
+                                ip_issued++;
+                                break;
+                            case 2:
+                                pages_issued++;
+                                break;
+                            case 3:
+                                bop_issued++;
+                                break;
+                        }
+                    }
+                #endif
                 //if(cache_type == IS_L2C)
                 //      cout<<"Aye Aye, Captain, issued.";
 
@@ -3693,6 +3777,24 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                 return 1;
 
             }
+            #ifdef PREFETCHER_CLASS_DEBUG
+                    if(cache_type == IS_L1D)
+                    {
+                        uint32_t prefetcher_type = metadata_decode(prefetch_metadata);
+                        switch(prefetcher_type)
+                        {
+                            case 1:
+                                ip_pq_full++;
+                                break;
+                            case 2:
+                                pages_pq_full++;
+                                break;
+                            case 3:
+                                bop_pq_full++;
+                                break;
+                        }
+                    }
+            #endif
 
             return 0;
         }
@@ -3865,6 +3967,61 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                     cout << "Prefetch request from CPU " << packet->cpu << " merging with Prefetch request from CPU " << PQ.entry[index].cpu << endl;
                     assert(0);
                 }
+
+                #ifdef PREFETCHER_CLASS_DEBUG
+                    if(cache_type == IS_L1D)
+                    {
+                        uint32_t origin_prefetcher_type = metadata_decode(PQ.entry[index].pf_metadata);
+                        uint32_t prefetcher_type = metadata_decode(packet->pf_metadata);
+                        switch(prefetcher_type){
+                            case 1:
+                                switch(origin_prefetcher_type)
+                                {
+                                    case 1:
+                                        pq_ip_merge_ip++;
+                                        break;
+                                    case 2:
+                                        pq_ip_merge_pages++;
+                                        break;
+                                    case 3:
+                                        pq_ip_merge_bop++;
+                                        break;
+                                }
+                                break;
+                            
+                            case 2:
+                                switch(origin_prefetcher_type)
+                                {
+                                    case 1:
+                                        pq_pages_merge_ip++;
+                                        break;
+                                    case 2:
+                                        pq_pages_merge_pages++;
+                                        break;
+                                    case 3:
+                                        pq_pages_merge_bop++;
+                                        break;
+                                }
+                                break;
+                            
+                            case 3:
+                                switch(origin_prefetcher_type)
+                                {
+                                    case 1:
+                                        pq_bop_merge_ip++;
+                                        break;
+                                    case 2:
+                                        pq_bop_merge_pages++;
+                                        break;
+                                    case 3:
+                                        pq_bop_merge_bop++;
+                                        break;
+                                }
+                                break;
+                        }
+                    }
+                #endif
+
 
                 //@v send_both_tlb should be updated in STLB PQ if the entry needs to be serviced to both ITLB and DTLB
                 if(cache_type == IS_STLB)
@@ -4327,3 +4484,12 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
         {
             WQ.FULL++;
         }
+
+        #ifdef PREFETCHER_CLASS_DEBUG
+            //对应的encode版本定义在vbertim.h中
+            uint32_t metadata_decode(uint32_t metadata)
+            {
+                uint32_t mask = 0b11 << 7; // 掩码，位8和位7为1，其它位为0
+                return (metadata & mask) >> 7; // 获取位8和位7的值
+            }
+        #endif

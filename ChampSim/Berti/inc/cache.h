@@ -2,6 +2,12 @@
 #define CACHE_H
 
 #include "memory_class.h"
+#define PREFETCHER_CLASS_DEBUG
+#define MEMORY_ACCESS_PATTERN_DEBUG
+
+#ifdef MEMORY_ACCESS_PATTERN_DEBUG
+#define LOG2_BLOCKS_PER_PAGE 6
+#endif
 // INICIO AGUS
 extern void notify_prefetch(uint64_t addr, uint64_t tag, uint32_t cpu, uint64_t cycle);
 // FIN AGUS
@@ -89,8 +95,8 @@ extern uint32_t PAGE_TABLE_LATENCY, SWAP_LATENCY;
 //#define L1D_MSHR_SIZE 16
 #define L1D_LATENCY 5
 //modify
-#define L1D_PQ_SIZE 32
-#define L1D_MSHR_SIZE 32
+#define L1D_PQ_SIZE 16
+#define L1D_MSHR_SIZE 16
 
 
 // L2 CACHE
@@ -166,6 +172,33 @@ class CACHE : public MEMORY {
 	     data_evicting_data,
 	     instr_evicting_instr,
 	     transl_evicting_transl;
+
+        #ifdef PREFETCHER_CLASS_DEBUG
+            uint64_t  pq_pages_merge_ip,
+                pq_pages_merge_bop,
+                pq_pages_merge_pages,
+                pq_ip_merge_pages,
+                pq_ip_merge_bop,
+                pq_ip_merge_ip,
+                pq_bop_merge_ip,
+                pq_bop_merge_pages,
+                pq_bop_merge_bop,
+                ip_issued, //在prefetch_line时，PQ没有满，就issue
+                ip_useful,//在prefetch_line时，PQ没有满，就不issue
+                ip_pf_late,
+                ip_pq_full,
+                ip_to_lower_level,//ip发往L2的个数
+                pages_issued,
+                pages_useful,
+                pages_pf_late,
+                pages_pq_full,
+                pages_to_lower_level,
+                bop_issued,
+                bop_useful,
+                bop_pf_late,
+                bop_pq_full,
+                bop_to_lower_level;
+        #endif
 
     	     uint64_t pref_useful[NUM_CPUS][6],
              pref_filled[NUM_CPUS][6],
@@ -273,6 +306,33 @@ class CACHE : public MEMORY {
 	data_evicting_data = 0;
 	instr_evicting_instr = 0;
 	transl_evicting_transl = 0;
+
+        #ifdef PREFETCHER_CLASS_DEBUG
+                pq_pages_merge_ip = 0;
+                pq_pages_merge_bop = 0;
+                pq_pages_merge_pages = 0;
+                pq_ip_merge_pages = 0;
+                pq_ip_merge_bop = 0; 
+                pq_ip_merge_ip = 0;
+                pq_bop_merge_ip = 0;
+                pq_bop_merge_pages = 0;
+                pq_bop_merge_bop = 0;
+                ip_issued = 0;
+                ip_useful = 0;
+                ip_pf_late = 0;
+                ip_pq_full = 0;
+                ip_to_lower_level = 0;
+                pages_issued = 0;
+                pages_useful = 0;
+                pages_pf_late = 0;
+                pages_pq_full = 0;
+                pages_to_lower_level = 0;
+                bop_issued = 0;
+                bop_useful = 0;
+                bop_pf_late = 0;
+                bop_pq_full = 0;
+                bop_to_lower_level = 0;
+        #endif
 
 	for(int i = 0; i < NUM_CPUS; i++)
 	{
@@ -435,5 +495,10 @@ class CACHE : public MEMORY {
 
              lru_victim(uint32_t cpu, uint64_t instr_id, uint32_t set, const BLOCK *current_set, uint64_t ip, uint64_t full_addr, uint32_t type);
 };
+
+#ifdef PREFETCHER_CLASS_DEBUG
+    //对应的encode版本定义在vbertim.h中
+    uint32_t metadata_decode(uint32_t metadata);
+#endif
 
 #endif

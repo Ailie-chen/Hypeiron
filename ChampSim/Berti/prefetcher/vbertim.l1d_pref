@@ -1803,8 +1803,10 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                     //return;
                     break;
                 }
-
-                if (prefetch_line(ip, addr, p_addr, fill_level, 1))
+                
+                //0b01:IP
+                uint32_t pf_metadata_encode_ip = metadata_encode(1,0b01);
+                if (prefetch_line(ip, addr, p_addr, fill_level, pf_metadata_encode_ip))
                 {
                     if(RECORD_DELTAS)
                     {
@@ -1879,7 +1881,10 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                     break;
                 }
 
-                if (prefetch_line(ip, addr, p_addr, fill_level, 1))
+                //0b10:Pages
+                uint32_t pf_metadata_encode_pages = metadata_encode(1,0b10);
+                
+                if (prefetch_line(ip, addr, p_addr, fill_level, pf_metadata_encode_pages))
                 {
                     if(RECORD_DELTAS)
                     {
@@ -1924,13 +1929,15 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                 #ifdef BOP_DEBUG
                     std::cout << "BOP L1 " << "MSHR: " << mshr_load <<std::endl;
                 #endif
+                //0b11:bop
+                uint32_t pf_metadata_encode_bop = metadata_encode(1,0b11);
                 if (!latency_table_get(pf_address, cpu)){
                     if((mshr_load < (MSHR_LIMIT + 10)) && ((launched_ip + launched_pages)< MAX_PF_LAUNCH))
                     {
-                        prefetch_line(ip, addr, pf_address, FILL_L1,1);
+                        prefetch_line(ip, addr, pf_address, FILL_L1,pf_metadata_encode_bop);
                     }
                     {
-                        prefetch_line(ip, addr, pf_address, FILL_L1,1);
+                        prefetch_line(ip, addr, pf_address, FILL_L1,pf_metadata_encode_bop);
                     }
                     launched_bop++;
                 }               
@@ -1984,3 +1991,15 @@ void CACHE::l1d_prefetcher_cache_fill(uint64_t v_addr, uint64_t addr,
 void CACHE::l1d_prefetcher_final_stats()
 {
 }
+
+
+#ifdef PREFETCHER_CLASS_DEBUG
+//对应的decode版本定义在cache.cc和cache.h中
+//metadata[8:7]来做标记：01：IP， 10：Pages 11：bop
+    uint32_t metadata_encode(uint32_t metadata_origin, uint32_t prefetcher_type)
+    {
+        uint32_t mask = ~(0b11 << 7); // 屏蔽位，位8和位7为0，其它位为1
+        uint32_t setting = (prefetcher_type & 0b11) << 7; // 设定值，位8和位7为你所需要的值，其它位为0
+        return (metadata_origin & mask) | setting; // 清除位8和位7并设置为新值
+    }
+#endif

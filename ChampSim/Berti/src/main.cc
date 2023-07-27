@@ -292,6 +292,37 @@ void print_roi_stats(uint32_t cpu, CACHE *cache)
 		cout<< cache->NAME<<" PREFETCHES PUSHED FROM L2C: " << cache->pf_pushed_from_L2C << endl;
 	}
 
+    if(cache->cache_type == IS_L1D)
+    {
+        cout << cache->NAME << endl;
+        cout << " pq_pages_merge_ip" << setw(10) << cache->pq_pages_merge_ip << endl;
+        cout << " pq_pages_merge_bop" << setw(10) << cache->pq_pages_merge_bop << endl;
+        cout << " pq_pages_merge_pages" << setw(10) << cache->pq_pages_merge_pages << endl;
+        cout << " pq_ip_merge_ip" << setw(10) << cache->pq_ip_merge_ip << endl;
+        cout << " pq_ip_merge_bop" << setw(10) << cache->pq_ip_merge_bop << endl;
+        cout << " pq_ip_merge_pages" << setw(10) << cache->pq_ip_merge_pages << endl;
+        cout << " pq_bop_merge_ip" << setw(10) << cache->pq_bop_merge_ip << endl;
+        cout << " pq_bop_merge_bop" << setw(10) << cache->pq_bop_merge_bop << endl;
+        cout << " pq_bop_merge_pages" << setw(10) << cache->pq_bop_merge_pages << endl;
+        cout << " ip_issued" << setw(10) << cache->ip_issued << endl;
+        cout << " ip_useful" << setw(10) << cache->ip_useful << endl;
+        cout << " ip_pf_late" << setw(10) << cache->ip_pf_late << endl;
+        cout << " ip_pq_full" << setw(10) << cache->ip_pq_full << endl;
+        cout << " ip_to_lower_level" << setw(10) << cache->ip_to_lower_level << endl;
+        cout << " pages_issued" << setw(10) << cache->pages_issued << endl;
+        cout << " pages_useful" << setw(10) << cache->pages_useful << endl;
+        cout << " pages_pf_late" << setw(10) << cache->pages_pf_late << endl;
+        cout << " pages_pq_full" << setw(10) << cache->pages_pq_full << endl;
+        cout << " pages_to_lower_level" << setw(10) << cache->pages_to_lower_level << endl;
+        cout << " bop_issued" << setw(10) << cache->bop_issued << endl;
+        cout << " bop_useful" << setw(10) << cache->bop_useful << endl;
+        cout << " bop_pf_late" << setw(10) << cache->bop_pf_late << endl;
+        cout << " bop_pq_full" << setw(10) << cache->bop_pq_full << endl;
+        cout << " bop_to_lower_level" << setw(10) << cache->bop_to_lower_level << endl;
+
+    }
+
+
 	if(cache->cache_type == IS_STLB)
 	{
 		cout << cache->NAME << " Hit, L1D data hit: " << cache->l1d_data_hit << endl;
@@ -362,6 +393,8 @@ void print_sim_stats(uint32_t cpu, CACHE *cache)
 
     cout << cache->NAME;
     cout << " WRITEBACK ACCESS: " << setw(10) << cache->sim_access[cpu][3] << "  HIT: " << setw(10) << cache->sim_hit[cpu][3] << "  MISS: " << setw(10) << cache->sim_miss[cpu][3] << "  HIT %: " << setw(10) << ((double)cache->sim_hit[cpu][3]*100/cache->sim_access[cpu][3]) << "  MISS %: " << setw(10) << ((double)cache->sim_miss[cpu][3]*100/cache->sim_access[cpu][3]) << "   MPKI: " <<  ((double)cache->sim_miss[cpu][3]*1000/num_instrs) << endl;
+
+    
 }
 
 void print_branch_stats()
