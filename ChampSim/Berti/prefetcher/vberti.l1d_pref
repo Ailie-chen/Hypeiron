@@ -12,6 +12,7 @@
 
 void notify_prefetch(uint64_t addr, uint64_t tag, uint32_t cpu, uint64_t cycle)
 {
+    //这个是预取时，进入到缺失状态寄存器的时间
     latency_table_add(addr, tag, cpu, 0, cycle & TIME_MASK);
 }
 

@@ -85,18 +85,26 @@ extern uint32_t PAGE_TABLE_LATENCY, SWAP_LATENCY;
 #define L1D_WAY 12
 #define L1D_RQ_SIZE 64
 #define L1D_WQ_SIZE 64 
-#define L1D_PQ_SIZE 16     //	Neelu: Changed from 8 to 16.
-#define L1D_MSHR_SIZE 16
+//#define L1D_PQ_SIZE 16     //	Neelu: Changed from 8 to 16.
+//#define L1D_MSHR_SIZE 16
 #define L1D_LATENCY 5
+//modify
+#define L1D_PQ_SIZE 32
+#define L1D_MSHR_SIZE 32
+
 
 // L2 CACHE
-#define L2C_SET 1024
+//#define L2C_SET 1024
 #define L2C_WAY 8
 #define L2C_RQ_SIZE 32
 #define L2C_WQ_SIZE 32
-#define L2C_PQ_SIZE 16	//Neelu: changing from 16 to 32
-#define L2C_MSHR_SIZE 32
+//#define L2C_PQ_SIZE 16	//Neelu: changing from 16 to 32
+//#define L2C_MSHR_SIZE 32
 #define L2C_LATENCY 10  // 5 (L1I or L1D) + 10 = 15 cycles
+//modify
+#define L2C_SET 1024
+#define L2C_PQ_SIZE 16
+#define L2C_MSHR_SIZE 32
 
 // LAST LEVEL CACHE
 #define LLC_SET NUM_CPUS*2048
@@ -165,7 +173,7 @@ class CACHE : public MEMORY {
 	     //Addition by Neelu end
 
 
-    // queues
+    // queues,write queue, read queue和prefetch queue，MSHR的定义，每一个是一个类
     PACKET_QUEUE WQ{NAME + "_WQ", WQ_SIZE}, // write queue
                  RQ{NAME + "_RQ", RQ_SIZE}, // read queue
                  PQ{NAME + "_PQ", PQ_SIZE}, // prefetch queue
@@ -297,10 +305,12 @@ class CACHE : public MEMORY {
          add_wq(PACKET *packet),
          add_pq(PACKET *packet);
 
+    //return_data,当数据从下一级返回时，检查数据是否为0，并且将返回的信息放入MSHR中，通过检查这个就是cache在处理handle——fill时调用的
     void return_data(PACKET *packet),
          operate(),
-         increment_WQ_FULL(uint64_t address);
+         increment_WQ_FULL(uint64_t address);//单纯的增加wq.full的计数
 
+    //这两个函数传递的地址实际上没有用到，只用到了相对应的队列的类型
     uint32_t get_occupancy(uint8_t queue_type, uint64_t address),
              get_size(uint8_t queue_type, uint64_t address);
 
@@ -320,7 +330,8 @@ class CACHE : public MEMORY {
          handle_processed();
 
     void add_nonfifo_queue(PACKET_QUEUE *queue, PACKET *packet), //@Vishal: Updated from add_mshr
-         update_fill_cycle(),
+         update_fill_cycle(),//找到了最小的event对应的event_cycle，以及对应的索引，更新MSHR.next_fill_cycle = min_cycle;
+            
 
 
 	 	 (CACHE::*initialize_replacement)(),

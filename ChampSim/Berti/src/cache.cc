@@ -38,6 +38,7 @@ ostream& operator<<(ostream& os, const PACKET &packet)
 void CACHE::handle_fill()
 {
     // handle fill
+    //这里应该是MSHR的填充索引不能为MSHR的大小
     uint32_t fill_cpu = (MSHR.next_fill_index == MSHR_SIZE) ? NUM_CPUS : MSHR.entry[MSHR.next_fill_index].cpu;
     if (fill_cpu == NUM_CPUS)
         return;
@@ -52,15 +53,20 @@ void CACHE::handle_fill()
         uint32_t mshr_index = MSHR.next_fill_index;
 
         // find victim
+        //get_set return (uint32_t) (address & ((1 << lg2(NUM_SET)) - 1)); 看来是根据地址进行索引的，不像是fifo？
         uint32_t set = get_set(MSHR.entry[mshr_index].address), way;
         way = (this->*find_victim)(fill_cpu, MSHR.entry[mshr_index].instr_id, set, block[set], MSHR.entry[mshr_index].ip, MSHR.entry[mshr_index].full_addr, MSHR.entry[mshr_index].type);
 
 
         //Neelu: Fill Packet type for L2
+        //fill_packet_type用来指示数据包时页表或者指令或者数据
         uint8_t fill_packet_type = 0; //1.Translation 2. Instruction 3. Data
 
         if(cache_type == IS_L2C)
         {
+
+            //这里也指明了MSHR.entry[mshr_index].type的类型，可以是预取，也可以是上一级的页表请求，也可以是上一级别的加载请求
+            //难道一些LOAD的地址转换请求不是来自于L1D？
             if(MSHR.entry[mshr_index].type == PREFETCH_TRANSLATION || MSHR.entry[mshr_index].type == TRANSLATION_FROM_L1D || MSHR.entry[mshr_index].type == LOAD_TRANSLATION)
                 fill_packet_type = 1;
             else if((MSHR.entry[mshr_index].type == LOAD || MSHR.entry[mshr_index].type == PREFETCH) && MSHR.entry[mshr_index].instruction)
@@ -70,7 +76,7 @@ void CACHE::handle_fill()
         }
 
 
-
+//对于填充的数据，如果越过了L2
 #ifdef L2_BYPASS
 
         //Knob for bypassing only instructions or only data or both - L2C_BYPASS_MODE
@@ -100,7 +106,7 @@ void CACHE::handle_fill()
         if(cache_type == IS_L2C && l2c_bypass)	//This is a bypass that does not fill the L2C
         {
             // COLLECT STATS - Neelu - Not collecting them. 
-
+            //mshr_index = next_fill_index,应该是每次填充之后更新的
             if(MSHR.entry[mshr_index].fill_level < fill_level)
             {
                 if(MSHR.entry[mshr_index].send_both_cache)
@@ -194,6 +200,7 @@ void CACHE::handle_fill()
                 assert(0);
             if(MSHR.entry[mshr_index].data == (UINT64_MAX >> LOG2_PAGE_SIZE))
             {
+                //超过了内存区域就不fill了
                 do_fill = 0;	//Drop the prefetch packet
 
                 // COLLECT STATS
@@ -371,7 +378,7 @@ void CACHE::handle_fill()
         {
 
             if(block[set][way].instruction && fill_packet_type == 1)
-                transl_evicting_instr++;
+                transl_evicting_instr++;//translattion类型的条目剔除指令类型
             else if(block[set][way].instruction && fill_packet_type == 2)
                 instr_evicting_instr++;
             else if(block[set][way].instruction && fill_packet_type == 3)
@@ -400,11 +407,14 @@ void CACHE::handle_fill()
 
             // check if the lower level WQ has enough room to keep this writeback request
             if (lower_level) {
+                //2表示是WQ
                 if (lower_level->get_occupancy(2, block[set][way].address) == lower_level->get_size(2, block[set][way].address)) {
 
                     // lower level WQ is full, cannot replace this victim
                     do_fill = 0;
+                    //与地址无关，表示lower——level满了之后，收到的更多的请求
                     lower_level->increment_WQ_FULL(block[set][way].address);
+                    //这个时候就发生了阻塞？，并且将其的类型的stall计数增加
                     STALL[MSHR.entry[mshr_index].type]++;
 
                     DP ( if (warmup_complete[fill_cpu] ) {
@@ -412,12 +422,12 @@ void CACHE::handle_fill()
                             cout << " lower level wq is full!" << " fill_addr: " << hex << MSHR.entry[mshr_index].address;
                             cout << " victim_addr: " << block[set][way].tag << dec << endl; });
                 }
-                else {
+                else {//如果没有满
                     PACKET writeback_packet;
 
                     writeback_packet.fill_level = fill_level << 1;
                     writeback_packet.cpu = fill_cpu;
-                    writeback_packet.address = block[set][way].address;
+                    writeback_packet.address = block[set][way].address;//这里写回的数据都是在本级中原始的数据
                     writeback_packet.full_addr = block[set][way].full_addr;
                     writeback_packet.data = block[set][way].data;
                     writeback_packet.instr_id = MSHR.entry[mshr_index].instr_id;
@@ -425,7 +435,7 @@ void CACHE::handle_fill()
                     writeback_packet.type = WRITEBACK;
                     writeback_packet.event_cycle = current_core_cycle[fill_cpu];
 
-                    lower_level->add_wq(&writeback_packet);
+                    lower_level->add_wq(&writeback_packet);//lower——level应该指的是缓存级别
                 }
             }
 #ifdef SANITY_CHECK
@@ -522,6 +532,7 @@ void CACHE::handle_fill()
             (this->*update_replacement_state)(fill_cpu, set, way, MSHR.entry[mshr_index].full_addr, MSHR.entry[mshr_index].ip, block[set][way].full_addr, MSHR.entry[mshr_index].type, 0);
 
             // COLLECT STATS
+            //在取回来需要miss++，可以考虑到merge的情况
             sim_miss[fill_cpu][MSHR.entry[mshr_index].type]++;
             //Neelu: Capturing instruction stats for L2C
             if((cache_type == IS_L2C) && (MSHR.entry[mshr_index].instruction == 1))
@@ -723,6 +734,8 @@ void CACHE::handle_fill()
     }
 }
 
+
+//应该是当前cache往下一级去写？
 void CACHE::handle_writeback()
 {
 
@@ -733,11 +746,12 @@ void CACHE::handle_writeback()
 
 assert(cache_type != IS_L1I || cache_type != IS_STLB); //@Vishal: TLB should not generate write packets
 
+//WQ不是fifo的
 if(cache_type == IS_L1D) //Get completed index in WQ, as it is non-fifo
 {
     for (uint32_t wq_index=0; wq_index < WQ.SIZE; wq_index++)
         if(WQ.entry[wq_index].translated == COMPLETED && (WQ.entry[wq_index].event_cycle <= current_core_cycle[cpu])) 
-            writes_ready.insert({WQ.entry[wq_index].event_cycle, wq_index});
+            writes_ready.insert({WQ.entry[wq_index].event_cycle, wq_index});//写准备好的一个字典加入条目
 }
 auto writes_ready_it = writes_ready.begin();
 
@@ -869,6 +883,7 @@ if (writeback_cpu == NUM_CPUS)
 
                 // check mshr
                 uint8_t miss_handled = 1;
+                //false应该是往下一级写
                 int mshr_index = check_nonfifo_queue(&MSHR, &WQ.entry[index],false); //@Vishal: Updated from check_mshr
 
                 if(mshr_index == -2)
@@ -877,7 +892,7 @@ if (writeback_cpu == NUM_CPUS)
                     miss_handled = 0;
                 }
 
-                if ((mshr_index == -1) && (MSHR.occupancy < MSHR_SIZE)) { // this is a new miss
+                if ((mshr_index == -1) && (MSHR.occupancy < MSHR_SIZE)) { // this is a new miss //-1就是在MSHR中没有找到
 
                     assert(WQ.entry[index].full_physical_address != 0);
                     PACKET new_packet = WQ.entry[index];
@@ -1025,6 +1040,7 @@ if (writeback_cpu == NUM_CPUS)
                 if (do_fill) {
                     // update prefetcher
                     if (cache_type == IS_L1I)
+                        //上一级的写回也算是cache_fill
                         l1i_prefetcher_cache_fill(writeback_cpu, ((WQ.entry[index].ip)>>LOG2_BLOCK_SIZE)<<LOG2_BLOCK_SIZE, set, way, 0, ((block[set][way].ip)>>LOG2_BLOCK_SIZE)<<LOG2_BLOCK_SIZE);
                     else if (cache_type == IS_L1D)
                     {
@@ -1119,6 +1135,7 @@ if (writeback_cpu == NUM_CPUS)
 }
 
 //@Vishal: Translation coming from TLB to L1 cache
+//将TLB翻译的结果送给L1 Cache
 void CACHE::handle_processed()
 {
     assert(cache_type == IS_L1I || cache_type == IS_L1D);
@@ -2419,6 +2436,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                 // handle the oldest entry
                 if ((PQ.entry[PQ.head].event_cycle <= current_core_cycle[prefetch_cpu]) && (PQ.occupancy > 0))
                 {
+                    //如果头部的项没有完成地址翻译，则直接返回
                     if(cache_type == IS_L1D && (PQ.entry[PQ.head].translated != COMPLETED)) //@Vishal: Check if the translation is done for that prefetch request or not.
                     {
                         return;
@@ -2430,6 +2448,8 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                         return;
                     }
                     int index = PQ.head;
+
+                    //如果L1D和L1I的地址越界了就会pf_dropped++,因为是在pq中，所以pf_dropped++，移除这个请求，处理下一个请求(循环是在每个周期读的最大的数？)
                     if((cache_type == IS_L1D || cache_type == IS_L1I) && (PQ.entry[PQ.head].full_physical_address >> LOG2_PAGE_SIZE) == (UINT64_MAX >> LOG2_PAGE_SIZE))
                     {
                         pf_dropped++;
@@ -2450,6 +2470,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                         (this->*update_replacement_state)(prefetch_cpu, set, way, block[set][way].full_addr, PQ.entry[index].ip, 0, PQ.entry[index].type, 1);
 
                         // COLLECT STATS
+                        //在hit之后，hit和access都会加1
                         sim_hit[prefetch_cpu][PQ.entry[index].type]++;
                         sim_access[prefetch_cpu][PQ.entry[index].type]++;
 
@@ -2485,13 +2506,13 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                             }
                             else if (cache_type == IS_DTLB)
                             {
-#ifdef SANITY_CHECK
+        #ifdef SANITY_CHECK
                                 if(PQ.entry[index].instruction)
                                 {
                                     cout << "DTLB prefetch packet should not prefetch address translation of instruction " << endl;
                                     assert(0);
                                 }
-#endif
+        #endif
                                 dtlb_prefetcher_operate(PQ.entry[index].address<<LOG2_PAGE_SIZE, PQ.entry[index].ip, 1, PQ.entry[index].type, PQ.entry[index].prefetch_id, PQ.entry[index].instruction);
                                 DP ( if (warmup_complete[PQ.entry[index].cpu] ) {
                                         cout << "[" << NAME << "_PQ] " <<  __func__ << " prefetch_id: " << PQ.entry[index].prefetch_id << "from handle prefetch on prefetch hit" << "instruction : "<< PQ.entry[index].instruction << endl;});
@@ -2585,9 +2606,11 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                         uint8_t miss_handled = 1;
                         int mshr_index = check_nonfifo_queue(&MSHR, &PQ.entry[index],false); //@Vishal: Updated from check_mshr
 
+                        //如果没有命中，就现在缺失状态寄存器中寻找有没有同类的，如果没有找到：
                         if ((mshr_index == -1) && (MSHR.occupancy < MSHR_SIZE)) { // this is a new miss
 
                             //Neelu: Calculting number of prefetches issued from L1D to L2C i.e. the next level
+                            //这个时候prefetch_count++没有命中，就需要发往下一级
                             if(cache_type == IS_L1D)
                                 prefetch_count++;
 
@@ -2599,6 +2622,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                                 pf_lower_fill_level++;
 
                             ++pf_lower_level;	//@v Increment for new prefetch miss
+                            //这是统计prefetch_miss的，与prefetch_count++不同，prefetch_count只统计了L1D发往L2C的
 
                             DP ( if (warmup_complete[PQ.entry[index].cpu] ) {
                                     cout << "[" << NAME << "_PQ] " <<  __func__ << " want to add prefetch_id: " << PQ.entry[index].prefetch_id << " address: " << hex << PQ.entry[index].address;
@@ -2608,13 +2632,14 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
 
                             // first check if the lower level PQ is full or not
                             // this is possible since multiple prefetchers can exist at each level of caches
-                            if (lower_level) {
+                            if (lower_level) {//判断是否存在下一级
                                 if (cache_type == IS_LLC) {
                                     if (lower_level->get_occupancy(1, PQ.entry[index].address) == lower_level->get_size(1, PQ.entry[index].address))
                                         miss_handled = 0;
                                     else {
 
                                         // run prefetcher on prefetches from higher caches
+                                        //pf_origin_level应该是原始的level
                                         if(PQ.entry[index].pf_origin_level < fill_level)
                                         {
                                             if (cache_type == IS_LLC)
@@ -2630,6 +2655,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                                         // add it to MSHRs if this prefetch miss will be filled to this cache level
                                         if (PQ.entry[index].fill_level <= fill_level)
                                             add_nonfifo_queue(&MSHR, &PQ.entry[index]); //@Vishal: Updated from add_mshr
+                                            //如果是填充的级别小于等于当前的级别，那么需要将其放入当前级别的MSHR中
 
                                         lower_level->add_rq(&PQ.entry[index]); // add it to the DRAM RQ
                                     }
@@ -2640,15 +2666,17 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                                     else {
                                         ++pf_lower_level_test;
                                         // run prefetcher on prefetches from higher caches
+                                        //这里低级的cache处理高级cache预取的请求需要加一些pf_metadata的信息,填充到低级别的cache
                                         if(PQ.entry[index].pf_origin_level < fill_level)
                                         {
-                                            if (cache_type == IS_L1D)
+                                            if (cache_type == IS_L1D)//这里L1D怎么办？应该是pf_origin_level<=level？
                                                 l1d_prefetcher_operate(PQ.entry[index].full_addr, PQ.entry[index].ip, 0, PREFETCH, PQ.entry[index].critical_ip_flag);	// PQ.entry[index].prefetch_id);
                                             else if ((cache_type == IS_L2C) && (RQ.entry[index].type != PREFETCH_TRANSLATION) && (RQ.entry[index].instruction == 0) && (RQ.entry[index].type != LOAD_TRANSLATION) && (RQ.entry[index].type != PREFETCH_TRANSLATION) && (RQ.entry[index].type != TRANSLATION_FROM_L1D))
                                             {
                                                 PQ.entry[index].pf_metadata = l2c_prefetcher_operate(PQ.entry[index].address<<LOG2_BLOCK_SIZE, PQ.entry[index].ip, 0, PREFETCH, PQ.entry[index].pf_metadata, PQ.entry[index].critical_ip_flag);	// PQ.entry[index].prefetch_id);
                                                 if((((PQ.entry[index].pf_metadata >> 17) & 1) | ((PQ.entry[index].pf_metadata >> 18) & 1)) == 1)
                                                     getting_hint_from_l2++;
+                                                    //预取来自高级别的请求
                                             }
                                             else if (cache_type == IS_ITLB)
                                             {
@@ -2733,7 +2761,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                                 }
 #endif
                             }
-                        }
+                        }//else：MSHR中有其索引
                         else {
                             if ((mshr_index == -1) && (MSHR.occupancy == MSHR_SIZE)) { // not enough MSHR resource
 
@@ -2742,6 +2770,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                                 // cannot handle miss request until one of MSHRs is available
                                 miss_handled = 0;
                                 STALL[PQ.entry[index].type]++;
+                                //如果没有足够的MSHR，那么就stall
                             }
                             else if (mshr_index != -1) { // already in-flight miss
 
@@ -2771,7 +2800,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                                 {
                                     MSHR.entry[mshr_index].fill_l1d = 1;
                                 }
-
+                                //MSHR_MERGED的类型以后来的类型为准
                                 MSHR_MERGED[PQ.entry[index].type]++;
 
                                 DP ( if (warmup_complete[prefetch_cpu] ) {
@@ -2795,6 +2824,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                                     cout << " full_addr: " << PQ.entry[index].full_addr << dec << " fill_level: " << PQ.entry[index].fill_level;
                                     cout << " cycle: " << PQ.entry[index].event_cycle << endl; });
 
+                            //有一些miss引起了阻塞，或者其他，这里只记录正确合并或者放入到MSHR中的
                             MISS[PQ.entry[index].type]++;
                             ACCESS[PQ.entry[index].type]++;
 
@@ -3609,7 +3639,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                 DP ( if (warmup_complete[cpu]) {cout << "packet entered in PQ" << endl; });
                 PACKET pf_packet;
                 pf_packet.fill_level = pf_fill_level;
-                pf_packet.pf_origin_level = fill_level;
+                pf_packet.pf_origin_level = fill_level;//最开始初始化的时候还是，采用的是当前cache的level
                 if(pf_fill_level == FILL_L1)		   
                 {
                     pf_packet.fill_l1d = 1;
@@ -3764,7 +3794,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
 
             int wq_index;
             if(cache_type == IS_L1D || cache_type == IS_L1I)
-                wq_index = check_nonfifo_queue(&WQ,packet,false);
+                wq_index = check_nonfifo_queue(&WQ,packet,false);//如果是-1，说明没有找到相同的索引，如果不是-1，说明找到了相同的索引
             else
                 wq_index = WQ.check_queue(packet);
 
@@ -3792,7 +3822,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
 #endif
 
 
-                // check fill level
+                // check fill level 对于缓存的默认fill level就为缓存的这一级，
                 if (packet->fill_level < fill_level) {
 
                     packet->data = WQ.entry[wq_index].data;
@@ -4158,11 +4188,13 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
         }
 
         //@Vishal: Made check_mshr generic; packet_direction (Required only for MSHR) =>true, going to lower level else coming from lower level
+                    //这个说的是false？感觉像是说反了，应该是false是往下级发送，这样才需要检查地址，true应该是返回的数据
         int CACHE::check_nonfifo_queue(PACKET_QUEUE *queue, PACKET *packet, bool packet_direction)
         {
             uint64_t check_address = packet->address;
 
             //@Vishal: packet_direction will be true only for return_data function. We don't need to check address translation for that.
+
             if(!packet_direction && (cache_type == IS_L1I || cache_type == IS_L1D) && queue->NAME.compare(NAME+"_MSHR") == 0)
             {
                 if(packet->full_physical_address == 0)
@@ -4174,6 +4206,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                     check_address = packet->full_physical_address >> LOG2_BLOCK_SIZE; //@Vishal: L1 MSHR has physical address
             }
 
+            //返回WQ中地址与packet相匹配的，这个搜索了所有的条目是因为，无效的条目的地址值为0
             if(cache_type == IS_L1D && queue->NAME.compare(NAME+"_WQ") == 0)
             {
                 // search queue

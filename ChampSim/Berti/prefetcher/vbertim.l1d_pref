@@ -431,7 +431,7 @@ class BestOffsetLearning {
     int local_best_offset = 0;
     int global_best_offset = 1;
 
-    const int SCORE_MAX = 32; //默认32
+    const int SCORE_MAX = 20; //默认32
     const int ROUND_MAX = 100;
     const int BAD_SCORE = 1;
 
@@ -1667,7 +1667,8 @@ void CACHE::l1d_prefetcher_initialize()
 
 void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit,
         uint8_t type, uint8_t critical_ip_flag)
-{
+{ 
+    assert(type == LOAD || type == RFO);  
     #ifdef BOP_DEBUG
         mtx.lock();
     #endif
@@ -1675,7 +1676,6 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
     {
         std::cout << "A access:" << std::endl;
     }
-    assert(type == LOAD || type == RFO);  
     uint64_t line_addr = (addr >> LOG2_BLOCK_SIZE); // Line addr  
     uint64_t pc = ip;
     ip = ((ip >> 1) ^ (ip >> 4));
@@ -1930,7 +1930,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                         prefetch_line(ip, addr, pf_address, FILL_L1,1);
                     }
                     {
-                        prefetch_line(ip, addr, pf_address, FILL_L2,1);
+                        prefetch_line(ip, addr, pf_address, FILL_L1,1);
                     }
                     launched_bop++;
                 }               

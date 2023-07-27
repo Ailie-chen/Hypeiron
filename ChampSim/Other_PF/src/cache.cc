@@ -1506,11 +1506,11 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                     }*/
 
 
-#ifdef PERFECT_L1D
+#ifdef PERFECT_L1D//no
             if(cache_type == IS_L1D)
                 way = 0;	//Perfect L1D
 #endif
-#ifdef PERFECT_L2C_DATA
+#ifdef PERFECT_L2C_DATA//no
             if(cache_type == IS_L2C && (RQ.entry[index].type != PREFETCH_TRANSLATION) && (RQ.entry[index].instruction == 0) && (RQ.entry[index].type != LOAD_TRANSLATION) && (RQ.entry[index].type != PREFETCH_TRANSLATION) && (RQ.entry[index].type != TRANSLATION_FROM_L1D))
                 way = 0;
 #endif
@@ -1526,7 +1526,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                }
                */
 
-#ifdef PUSH_DTLB_PB
+#ifdef PUSH_DTLB_PB//no
             //If DTLB misses, check DTLB Prefetch Buffer
             if(cache_type == IS_DTLB && way < 0)
             {
@@ -1589,7 +1589,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                 {
 
                     //Neelu: Checking where in the cache hierarchy the corresponding data is present on STLB hits.
-#ifdef CHECK_DATA_HIT_ON_STLB_HIT
+#ifdef CHECK_DATA_HIT_ON_STLB_HIT//no
                     PACKET to_check_hit;
                     if((RQ.entry[index].instruction == 0) && (RQ.entry[index].l1_rq_index != -1))
                     {
@@ -1617,7 +1617,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
 #endif
 
                     //Neelu: Invoking L2C prefetcher on STLB hits
-#ifdef STLB_HINT_TO_L2_PREF
+#ifdef STLB_HINT_TO_L2_PREF//no
 
                     /*	if((RQ.entry[index].instruction == 0) && (RQ.entry[index].l1_rq_index != -1))
                         {
@@ -1909,7 +1909,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                             {
                                 assert(RQ.entry[index].full_physical_address != 0);
                                 //Neelu: Added to processed queue even on miss for ideal L1 prefetcher, comment if not needed. 
-#ifdef PRACTICAL_PERFECT_L1D
+#ifdef PRACTICAL_PERFECT_L1D//no
                                 if ((cache_type == IS_L1D) && (RQ.entry[index].type != PREFETCH)) {
                                     if (PROCESSED.occupancy < PROCESSED.SIZE)
                                         PROCESSED.add_queue(&RQ.entry[index]);
@@ -1944,7 +1944,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                                 if (lower_level)
                                     lower_level->add_rq(&RQ.entry[index]);
                                 else { // this is the last level
-#ifdef INS_PAGE_TABLE_WALKER
+#ifdef INS_PAGE_TABLE_WALKER//yes
                                     assert(0);
 #else
                                     if (cache_type == IS_STLB) {
@@ -2034,7 +2034,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                                 else 
                                 {
                                     //Neelu: Added to processed queue even on miss for ideal L1 prefetcher, comment if not needed. 
-#ifdef PRACTICAL_PERFECT_L1D
+#ifdef PRACTICAL_PERFECT_L1D//no
                                     if ((cache_type == IS_L1D) && (RQ.entry[index].type != PREFETCH)) {
                                         if (PROCESSED.occupancy < PROCESSED.SIZE)
                                             PROCESSED.add_queue(&RQ.entry[index]);
@@ -3909,7 +3909,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
             if(cache_type == IS_L1D && packet->full_physical_address == 0)
             {
 
-#ifdef NO_TRANSLATION_PENALTY_FOR_PREFETCHES
+#ifdef NO_TRANSLATION_PENALTY_FOR_PREFETCHES//no
                 pf_requested++;
                 pf_issued++;
                 auto ppage_check = ooo_cpu[packet->cpu].PTW.page_table.find(packet->full_virtual_address >> LOG2_PAGE_SIZE);

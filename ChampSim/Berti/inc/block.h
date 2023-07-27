@@ -133,6 +133,8 @@ class PACKET {
 
     uint32_t cpu, data_index, lq_index, sq_index;
 
+    //这个里面的address和full addr是不同的含义，在进行check时，对于L1D采用full_addr进行对比
+    //对于其他的采用address进行对比
     uint64_t address, 
              full_addr, 
              instruction_pa,
@@ -216,7 +218,8 @@ class PACKET {
     };
 };
 
-// packet queue
+// packet queue， wq，rq，pref_q和MSHR，processed queue的定义类
+// 对于每一个cache都包含了上面说的几个队列
 class PACKET_QUEUE {
   public:
     string NAME;

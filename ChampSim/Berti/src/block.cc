@@ -1,5 +1,6 @@
 #include "block.h"
 
+//返回队列中地址相匹配的条目的索引
 int PACKET_QUEUE::check_queue(PACKET *packet)
 {
     if ((head == tail) && occupancy == 0)
