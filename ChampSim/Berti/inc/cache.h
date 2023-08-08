@@ -2,12 +2,10 @@
 #define CACHE_H
 
 #include "memory_class.h"
-#define PREFETCHER_CLASS_DEBUG
-#define MEMORY_ACCESS_PATTERN_DEBUG
+//#define PREFETCHER_CLASS_DEBUG
+// #define MEMORY_ACCESS_PATTERN_DEBUG
 
-#ifdef MEMORY_ACCESS_PATTERN_DEBUG
 #define LOG2_BLOCKS_PER_PAGE 6
-#endif
 // INICIO AGUS
 extern void notify_prefetch(uint64_t addr, uint64_t tag, uint32_t cpu, uint64_t cycle);
 // FIN AGUS

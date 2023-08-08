@@ -90,7 +90,8 @@ def parse_file(file: str) -> Tuple[str, str, int, Dict[str, Any]]:
     if not match_prefetcher:
         print("no match_prefetcher");
         return '', '', -1, {}
-    match_trace = re.search(r'---(.*)\.champsimtrace\.xz', file)
+    match_trace = re.search(r'---(.+)(\.champsimtrace\.xz|\.trace\.gz)', file)
+    
     if not match_trace:
         print("no match_trace");
         return '', '', -1, {}
@@ -153,6 +154,11 @@ def parse_file(file: str) -> Tuple[str, str, int, Dict[str, Any]]:
                 if matches3:
                     prefetch_late = int(matches3.group(1))
                     entry[evaluate_cache+" prefetch_late"][current_cpu] = prefetch_late
+                
+                pattern4 = r"^L1D USEFUL LOAD.*?(\d+\.\d+)$"
+                matches4 = re.search(pattern4,line)
+                if matches4:
+                    entry[evaluate_cache+" LOAD_ACCURACY"][current_cpu] = float(matches4.group(1))
 
     return trace, prefetcher, cpu, entry
 
@@ -160,10 +166,10 @@ def parse_file(file: str) -> Tuple[str, str, int, Dict[str, Any]]:
 #使用map的方法，将parse_file应用于res_files(all_files)中的每一个文件
 def parse_origin_results() -> None:
     global ROI_ORIGIN_STATS
-    res_files1 = glob.glob(os.path.join(CONFIGS["baseline_results_dir"], '*.xz'))
+    res_files1 = glob.glob(os.path.join(CONFIGS["baseline_results_dir"], '*.*z'))
     all_files = res_files1
     for res_files in CONFIGS["results_dir"]:
-        all_files += glob.glob(os.path.join(CONFIGS["simulator_path"]+"/"+ res_files, '*.xz'))
+        all_files += glob.glob(os.path.join(CONFIGS["simulator_path"]+"/"+ res_files, '*.*z'))
     #CONFIGS["results_dir"] = CONFIGS["simulator_path"]+"/"+CONFIGS["results_dir"]
     #res_files2 = glob.glob(os.path.join(CONFIGS["results_dir"], '*.xz'))
     with multiprocessing.Pool(multiprocessing.cpu_count()) as pool:
@@ -668,7 +674,8 @@ def bingo_evaluate():
     # ("1core_all_miss_rate_80M", "output_prefetchers"),
     
     #("1core_spec_compare_all_80M", "output_prefetchers"),
-    ("1core_spec2k17_compare_mem_tense","output_prefetchers"),
+    #("1core_spec2k17_compare_mem_tense","output_prefetchers"),
+    (f"1core_{sys.argv[1]}_compare_mem_tense","output_prefetchers"),
 
 
     # ("1core_rate", "output_prefetchers"),

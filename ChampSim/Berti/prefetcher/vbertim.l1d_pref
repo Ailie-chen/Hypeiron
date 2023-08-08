@@ -1932,13 +1932,15 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                 //0b11:bop
                 uint32_t pf_metadata_encode_bop = metadata_encode(1,0b11);
                 if (!latency_table_get(pf_address, cpu)){
-                    if((mshr_load < (MSHR_LIMIT + 10)) && ((launched_ip + launched_pages)< MAX_PF_LAUNCH))
-                    {
-                        prefetch_line(ip, addr, pf_address, FILL_L1,pf_metadata_encode_bop);
-                    }
-                    {
-                        prefetch_line(ip, addr, pf_address, FILL_L1,pf_metadata_encode_bop);
-                    }
+                    prefetch_line(ip, addr, pf_address, FILL_L1,1);
+                    // if((mshr_load < (MSHR_LIMIT + 10)) && ((launched_ip + launched_pages)< MAX_PF_LAUNCH))
+                    // {
+                    //     prefetch_line(ip, addr, pf_address, FILL_L1,pf_metadata_encode_bop);
+                    // }
+                    // else
+                    // {
+                    //     prefetch_line(ip, addr, pf_address, FILL_L1,pf_metadata_encode_bop);
+                    // }
                     launched_bop++;
                 }               
             }

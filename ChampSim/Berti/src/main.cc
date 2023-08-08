@@ -292,6 +292,7 @@ void print_roi_stats(uint32_t cpu, CACHE *cache)
 		cout<< cache->NAME<<" PREFETCHES PUSHED FROM L2C: " << cache->pf_pushed_from_L2C << endl;
 	}
 
+    #ifdef PREFETCHER_CLASS_DEBUG
     if(cache->cache_type == IS_L1D)
     {
         cout << cache->NAME << endl;
@@ -321,6 +322,7 @@ void print_roi_stats(uint32_t cpu, CACHE *cache)
         cout << " bop_to_lower_level" << setw(10) << cache->bop_to_lower_level << endl;
 
     }
+    #endif
 
 
 	if(cache->cache_type == IS_STLB)

@@ -3,9 +3,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
-dates=['0703','0704']
-traces=['spec2k17']
-metrics=['IPC','IPCI','L1D Accuracy','L1D Coverage']
+#dates=["0734"]
+dates=["0734"]
+traces=["spec2k17"]
+metrics=['IPC','IPCI','L1D LOAD_ACCURACY','L1D MPKI']
 
 
 
