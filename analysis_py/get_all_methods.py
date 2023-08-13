@@ -5,12 +5,12 @@ import numpy as np
 
 # 定义路径和参数
 base_path = 'evaluationmemtense/'
-save_path = 'memtensefigures_res/all_methods_compare/ligra/'
+save_path = 'memtensefigures_res/all_methods_compare/spec2k17/'
 if not os.path.exists(save_path):
  # 如果目录不存在，则创建该目录
     os.makedirs(save_path)
-traces = ['ligra']
-dates = ['0703','0713']
+traces = ['spec2k17']
+dates = ['0703','0713','0734']
 #dates = ['0703','0704',]
 #metrics = ['IPC','IPCI','L1D Accuracy','L1D Coverage']
 metrics = ['IPC','IPCI','L1D LOAD_ACCURACY','L1D MPKI']
@@ -73,9 +73,9 @@ for trace in traces:
                     if values[i] == '-':
                         values[i] = 0
                 values = values.astype(float)
-                ax.bar(bar_pos + bar_width * k, values, width=bar_width, label=dic[key[0]])
+                # ax.bar(bar_pos + bar_width * k, values, width=bar_width, label=dic[key[0]])
+                ax.bar(bar_pos + bar_width * k, values, width=bar_width, label=date)
                 k = k + 1
-                print(k)
         plt.subplots_adjust(bottom=0.2)
         plt.xticks(bar_pos + bar_width * len(dates)/2, benchmarks_name, rotation=45, fontsize=15, ha='right')
         #plt.ylim(min_v,max_v)

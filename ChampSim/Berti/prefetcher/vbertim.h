@@ -1,7 +1,6 @@
 #ifndef VBERTI_H_
 #define VBERTI_H_
 
-#define PREFETCHER_CLASS_DEBUG
 
 #include "vberti_size.h"
 

@@ -15,7 +15,7 @@
 
 //******预取器开关*********//
 #define BERTI_IP_ON
-#define BERTI_PAGES_ON
+//#define BERTI_PAGES_ON
 //#define BOP_ON
 #define BINGO_BOP_ON
 #define CONSTRAIN_BOP
@@ -1668,7 +1668,7 @@ void CACHE::l1d_prefetcher_initialize()
 void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit,
         uint8_t type, uint8_t critical_ip_flag)
 { 
-    assert(type == LOAD || type == RFO);  
+    
     #ifdef BOP_DEBUG
         mtx.lock();
     #endif
@@ -1676,6 +1676,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
     {
         std::cout << "A access:" << std::endl;
     }
+    assert(type == LOAD || type == RFO);  
     uint64_t line_addr = (addr >> LOG2_BLOCK_SIZE); // Line addr  
     uint64_t pc = ip;
     ip = ((ip >> 1) ^ (ip >> 4));
@@ -1805,8 +1806,12 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                 }
                 
                 //0b01:IP
+                #ifdef PREFETCHER_CLASS_DEBUG
                 uint32_t pf_metadata_encode_ip = metadata_encode(1,0b01);
-                if (prefetch_line(ip, addr, p_addr, fill_level, pf_metadata_encode_ip))
+                    if (prefetch_line(ip, addr, p_addr, fill_level, pf_metadata_encode_ip))
+                #else
+                    if (prefetch_line(ip, addr, p_addr, fill_level,1))
+                #endif
                 {
                     if(RECORD_DELTAS)
                     {
@@ -1823,12 +1828,12 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
     #endif
 
     #ifdef BERTI_PAGES_ON
-    for (int i = 0; i < MAX_PF; i++) 
-    {
-        stride[i].conf = 0;
-        stride[i].stride = 0;
-        stride[i].rpl = R;
-    }
+    // for (int i = 0; i < MAX_PF; i++) 
+    // {
+    //     stride[i].conf = 0;
+    //     stride[i].stride = 0;
+    //     stride[i].rpl = R;
+    // }
     int launched_pages = 0;
     //*********************pages prefetch*********************//
     if (!pages_berti_table_get(((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) 
@@ -1882,9 +1887,13 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                 }
 
                 //0b10:Pages
+                #ifdef PREFETCHER_CLASS_DEBUG
                 uint32_t pf_metadata_encode_pages = metadata_encode(1,0b10);
                 
                 if (prefetch_line(ip, addr, p_addr, fill_level, pf_metadata_encode_pages))
+                #else
+                    if (prefetch_line(ip, addr, p_addr, fill_level, 1))
+                #endif
                 {
                     if(RECORD_DELTAS)
                     {
@@ -1924,25 +1933,36 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
             vector<uint64_t> to_prefetch = prefetchers[cpu].access(line_addr);
             for (auto &pf_block_number : to_prefetch) {
                 uint64_t pf_address = pf_block_number << LOG2_BLOCK_SIZE;
-                /* champsim automatically ignores prefetches that cross page boundaries */
-                float mshr_load = ((float) MSHR.occupancy / (float) MSHR_SIZE) * 100;
-                #ifdef BOP_DEBUG
-                    std::cout << "BOP L1 " << "MSHR: " << mshr_load <<std::endl;
-                #endif
-                //0b11:bop
-                uint32_t pf_metadata_encode_bop = metadata_encode(1,0b11);
-                if (!latency_table_get(pf_address, cpu)){
-                    prefetch_line(ip, addr, pf_address, FILL_L1,1);
-                    // if((mshr_load < (MSHR_LIMIT + 10)) && ((launched_ip + launched_pages)< MAX_PF_LAUNCH))
-                    // {
-                    //     prefetch_line(ip, addr, pf_address, FILL_L1,pf_metadata_encode_bop);
-                    // }
-                    // else
-                    // {
-                    //     prefetch_line(ip, addr, pf_address, FILL_L1,pf_metadata_encode_bop);
-                    // }
-                    launched_bop++;
-                }               
+                prefetch_line(ip, addr, pf_address, FILL_L1,1);
+                // /* champsim automatically ignores prefetches that cross page boundaries */
+                // float mshr_load = ((float) MSHR.occupancy / (float) MSHR_SIZE) * 100;
+                // #ifdef BOP_DEBUG
+                //     std::cout << "BOP L1 " << "MSHR: " << mshr_load <<std::endl;
+                // #endif
+                // //0b11:bop
+                // #ifdef PREFETCHER_CLASS_DEBUG
+                // uint32_t pf_metadata_encode_bop = metadata_encode(1,0b11);
+                // #endif
+                // if (!latency_table_get(pf_address, cpu)){
+                    
+                //     if((mshr_load < (MSHR_LIMIT + 10)) && ((launched_ip + launched_pages)< MAX_PF_LAUNCH))
+                //     {   
+                //         #ifdef PREFETCHER_CLASS_DEBUG
+                //         prefetch_line(ip, addr, pf_address, FILL_L1,pf_metadata_encode_bop);
+                //         #else
+                //         prefetch_line(ip, addr, pf_address, FILL_L1,1);
+                //         #endif
+                //     }
+                //     else
+                //     {
+                //         #ifdef PREFETCHER_CLASS_DEBUG
+                //         prefetch_line(ip, addr, pf_address, FILL_L1,pf_metadata_encode_bop);
+                //         #else
+                //         prefetch_line(ip, addr, pf_address, FILL_L1,1);
+                //         #endif
+                //     }
+                //     launched_bop++;
+                // }               
             }
         }
         #ifdef BOP_DEBUG
