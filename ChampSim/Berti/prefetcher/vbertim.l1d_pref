@@ -1828,12 +1828,12 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
     #endif
 
     #ifdef BERTI_PAGES_ON
-    // for (int i = 0; i < MAX_PF; i++) 
-    // {
-    //     stride[i].conf = 0;
-    //     stride[i].stride = 0;
-    //     stride[i].rpl = R;
-    // }
+    for (int i = 0; i < MAX_PF; i++) 
+    {
+        stride[i].conf = 0;
+        stride[i].stride = 0;
+        stride[i].rpl = R;
+    }
     int launched_pages = 0;
     //*********************pages prefetch*********************//
     if (!pages_berti_table_get(((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE), cpu, stride)) 
