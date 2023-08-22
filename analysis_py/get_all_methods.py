@@ -13,7 +13,7 @@ traces = ['spec2k17']
 dates = ['0703','0713','0734']
 #dates = ['0703','0704',]
 #metrics = ['IPC','IPCI','L1D Accuracy','L1D Coverage']
-metrics = ['IPC','IPCI','L1D LOAD_ACCURACY','L1D MPKI']
+metrics = ['IPC','IPCI','L1D LOAD_ACCURACY','L1D MPKI','L1D Overprediction','L1D traffic']
 dic = dict([ ('vberti', 'IP'),
         ('0703', 'IP+pages'),
         ('0704', 'IP+pages+bingo_bop(16)'),
