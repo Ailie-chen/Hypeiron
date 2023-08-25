@@ -1480,9 +1480,10 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
             #ifdef MEMORY_ACCESS_PATTERN_DEBUG
                 uint64_t line_addr_debug = (RQ.entry[RQ.head].full_addr >> LOG2_BLOCK_SIZE); // Line addr  
                 uint64_t page_addr_debug = (line_addr_debug >> LOG2_BLOCKS_PER_PAGE);
-                if(cache_type == IS_L1D && (RQ.entry[index].type == RFO || RQ.entry[index].type == LOAD))
+                uint64_t page_addr_offset = (line_addr_debug %(1 << LOG2_BLOCKS_PER_PAGE));
+                if(cache_type == IS_L1D && (RQ.entry[index].type == RFO || RQ.entry[index].type == LOAD) && (warmup_complete[read_cpu]==1))
                 {
-                    std::cout << page_addr_debug << ' '<< RQ.entry[index].ip << std::endl;
+                    std::cout<<RQ.entry[index].ip << ' '<<page_addr_debug << ' '<<page_addr_offset<<' '<<line_addr_debug << std::endl;
                 }
             #endif
 

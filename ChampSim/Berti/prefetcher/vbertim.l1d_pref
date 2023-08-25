@@ -14,10 +14,13 @@
 #define LANZAR_INT 8
 
 //******预取器开关*********//
-#define BERTI_IP_ON
-#define BERTI_PAGES_ON
+//#define BERTI_IP_ON
+//#define BERTI_PAGES_ON
+//#define BINGO_BOP_ON
+//#define MLOP_ON
+
+
 //#define BOP_ON
-#define BINGO_BOP_ON
 #ifdef BINGO_BOP_ON
     #define CONSTRAIN_BOP
     //#define CP_BINGO_BOP_ON
@@ -25,7 +28,7 @@
     //#define BOP_L2
     //#define BOP_DEBUG
 #endif
-#define MLOP_ON
+
 
 std::mutex mtx;
 #ifdef MLOP_ON

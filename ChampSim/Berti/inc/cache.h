@@ -3,7 +3,7 @@
 
 #include "memory_class.h"
 //#define PREFETCHER_CLASS_DEBUG
-// #define MEMORY_ACCESS_PATTERN_DEBUG
+#define MEMORY_ACCESS_PATTERN_DEBUG
 
 #define LOG2_BLOCKS_PER_PAGE 6
 // INICIO AGUS
