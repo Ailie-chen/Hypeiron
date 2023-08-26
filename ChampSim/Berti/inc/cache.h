@@ -5,6 +5,29 @@
 //#define PREFETCHER_CLASS_DEBUG
 #define MEMORY_ACCESS_PATTERN_DEBUG
 
+#ifdef MEMORY_ACCESS_PATTERN_DEBUG
+    #include<unordered_map>
+    typedef struct act_ValuePair_struct
+    {
+        uint64_t offset;
+        uint64_t ip;
+        uint64_t vpaddr;
+    } act_ValuePair;
+
+    //typedef std::pair<uint64_t, uint64_t> act_ValuePair;
+    typedef std::vector<act_ValuePair> act_ValueArray;
+    typedef std::unordered_map<uint64_t, act_ValueArray> act_Dictionary;
+
+    typedef struct filter_ValuePair_struct
+    {
+        uint64_t count;
+        uint64_t offset;
+        uint64_t ip;
+        uint64_t vpaddr;
+    } filter_ValuePair;
+    typedef std::unordered_map<uint64_t, filter_ValuePair> filter_Dictionary;
+#endif
+
 #define LOG2_BLOCKS_PER_PAGE 6
 // INICIO AGUS
 extern void notify_prefetch(uint64_t addr, uint64_t tag, uint32_t cpu, uint64_t cycle);
@@ -197,6 +220,10 @@ class CACHE : public MEMORY {
                 bop_pq_full,
                 bop_to_lower_level;
         #endif
+        #ifdef MEMORY_ACCESS_PATTERN_DEBUG
+            act_Dictionary act_dict;
+            filter_Dictionary filter_dict;
+        #endif
 
     	     uint64_t pref_useful[NUM_CPUS][6],
              pref_filled[NUM_CPUS][6],
@@ -332,6 +359,8 @@ class CACHE : public MEMORY {
                 bop_to_lower_level = 0;
         #endif
 
+
+
 	for(int i = 0; i < NUM_CPUS; i++)
 	{
 		for(int j = 0; j < 6; j++)
@@ -362,6 +391,11 @@ class CACHE : public MEMORY {
     int  add_rq(PACKET *packet),
          add_wq(PACKET *packet),
          add_pq(PACKET *packet);
+
+    #ifdef MEMORY_ACCESS_PATTERN_DEBUG
+            void insertEntry(act_Dictionary& act_dict,filter_Dictionary& filter_dict, uint64_t key, act_ValuePair value);
+            void EvictEntry(act_Dictionary& act_dict, filter_Dictionary& filter_dict,uint64_t key);
+    #endif
 
     //return_data,当数据从下一级返回时，检查数据是否为0，并且将返回的信息放入MSHR中，通过检查这个就是cache在处理handle——fill时调用的
     void return_data(PACKET *packet),
