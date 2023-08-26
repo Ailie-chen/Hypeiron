@@ -67,7 +67,7 @@ uint32_t CACHE::lru_victim(uint32_t cpu, uint64_t instr_id, uint32_t set, const 
                 #ifdef MEMORY_ACCESS_PATTERN_DEBUG
                     if(cache_type == IS_L1D)
                     {
-                        EvictEntry(act_dict,filter_dict,((block[set][way].address)>>LOG2_BLOCKS_PER_PAGE));
+                        EvictEntry(act_dict,filter_dict,block[set][way].ip);
                     }
                 #endif
                 break;

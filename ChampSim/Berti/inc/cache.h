@@ -10,8 +10,8 @@
     typedef struct act_ValuePair_struct
     {
         uint64_t offset;
-        uint64_t ip;
-        uint64_t vpaddr;
+        uint64_t paddr;
+        uint64_t vaddr;
     } act_ValuePair;
 
     //typedef std::pair<uint64_t, uint64_t> act_ValuePair;
@@ -22,8 +22,8 @@
     {
         uint64_t count;
         uint64_t offset;
-        uint64_t ip;
-        uint64_t vpaddr;
+        uint64_t paddr;
+        uint64_t vaddr;
     } filter_ValuePair;
     typedef std::unordered_map<uint64_t, filter_ValuePair> filter_Dictionary;
 #endif

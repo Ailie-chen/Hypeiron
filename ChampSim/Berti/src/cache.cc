@@ -1482,8 +1482,9 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
             int index = RQ.head;
             #ifdef MEMORY_ACCESS_PATTERN_DEBUG
             //这里的地址应该为物理地址，因为用来索引cache了
+            //full_addr为虚拟地址，full_physical_address为物理地址，address为虚拟的块地址
                 //uint64_t line_addr_debug = (RQ.entry[RQ.head].full_addr >> LOG2_BLOCK_SIZE); // Line addr  
-                uint64_t line_addr_debug = (RQ.entry[RQ.head].full_physical_address >> LOG2_BLOCK_SIZE);
+                uint64_t line_addr_debug = (RQ.entry[RQ.head].full_physical_address >> LOG2_BLOCK_SIZE);//物理地址
                 uint64_t page_addr_debug = (line_addr_debug >> LOG2_BLOCKS_PER_PAGE);
                 uint64_t page_addr_offset = (line_addr_debug %(1 << LOG2_BLOCKS_PER_PAGE));
                 if(cache_type == IS_L1D && (RQ.entry[index].type == RFO || RQ.entry[index].type == LOAD) && (warmup_complete[read_cpu]==1))
@@ -1493,10 +1494,11 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                     // std::cout << (RQ.entry[RQ.head].full_addr >> LOG2_BLOCK_SIZE) << std::endl;
                     act_ValuePair value;
                     value.offset = page_addr_offset;
-                    value.ip = RQ.entry[index].ip;
-                    value.vpaddr = (RQ.entry[RQ.head].full_addr >> LOG2_PAGE_SIZE);
-
-                    insertEntry(act_dict,filter_dict,page_addr_debug,value);
+                    value.paddr = line_addr_debug;
+                    value.vaddr = (RQ.entry[RQ.head].full_addr >> LOG2_BLOCK_SIZE);
+                    // std::cout<<(RQ.entry[RQ.head].full_addr >> LOG2_BLOCK_SIZE)<< " "<<line_addr_debug<< std::endl;
+                    // std::cout << RQ.entry[index].address<< std::endl;
+                    insertEntry(act_dict,filter_dict,RQ.entry[index].ip,value);
                 }
             #endif
 
@@ -3077,6 +3079,10 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
             block[set][way].data = packet->data;
             block[set][way].cpu = packet->cpu;
             block[set][way].instr_id = packet->instr_id;
+            #ifdef MEMORY_ACCESS_PATTERN_DEBUG
+                block[set][way].ip = packet->ip;
+            #endif
+            
 
             DP ( if (warmup_complete[packet->cpu] ) {
                     cout << "[" << NAME << "] " << __func__ << " set: " << set << " way: " << way;
@@ -3182,7 +3188,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                 {
                     //block[set][match_way].address就是物理地址，因为就是tag，块地址，只是这里的tag就等于块地址，实际上
                     //由于业内偏移相同，所以物理页地址相同也就等价于块地址相同
-                    EvictEntry(act_dict,filter_dict,(block[set][match_way].address>>LOG2_BLOCKS_PER_PAGE));
+                    EvictEntry(act_dict,filter_dict,block[set][match_way].ip);
                 }
             #endif
 
@@ -4553,8 +4559,8 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                 {
                     act_ValuePair value_act ;
                     value_act.offset = it_filter->second.offset;
-                    value_act.ip = it_filter->second.ip;
-                    value_act.vpaddr = it_filter->second.vpaddr;
+                    value_act.paddr = it_filter->second.paddr;
+                    value_act.vaddr = it_filter->second.vaddr;
                     act_ValueArray value_array = {value_act, value};
                     act_dict[key] = value_array;
                     filter_dict.erase(key);
@@ -4575,13 +4581,13 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                             }
                         }
                         filter_ValuePair entry_max = filter_dict[max_key];
-                        std::cout << max_key <<" " << "1F"<<" "<< "(" <<entry_max.offset << ","<< entry_max.vpaddr << ","<< entry_max.ip<< ")"<<std::endl;
+                        std::cout << max_key <<" " << "1F"<<" "<< "(" <<entry_max.offset << ","<< entry_max.paddr << ","<< entry_max.vaddr<< ")"<<std::endl;
                         filter_dict.erase(max_key);
                         filter_ValuePair value_filter;
                         value_filter.count = 0;
                         value_filter.offset = value.offset;
-                        value_filter.ip = value.ip;
-                        value_filter.vpaddr = value.vpaddr;
+                        value_filter.paddr = value.paddr;
+                        value_filter.vaddr = value.vaddr;
                         filter_dict[key] = value_filter;
                     }
                     else
@@ -4589,8 +4595,8 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                         filter_ValuePair value_filter;
                         value_filter.count = 0;
                         value_filter.offset = value.offset;
-                        value_filter.ip = value.ip;
-                        value_filter.vpaddr = value.vpaddr;
+                        value_filter.paddr = value.paddr;
+                        value_filter.vaddr = value.vaddr;
                         filter_dict[key] = value_filter;
                     }
                 }
@@ -4604,7 +4610,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                 std::cout << it_act->second.size() << " ";
                 for (const auto &entry : it_act->second) 
                 {
-                    std::cout <<"(" <<entry.offset << ","<< entry.vpaddr << ","<< entry.ip<< ")";
+                    std::cout <<"(" <<entry.offset << ","<< entry.paddr << ","<< entry.vaddr<< ")";
                 }
                 std::cout << std::endl;
                 act_dict.erase(key);
@@ -4615,7 +4621,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                 if (it_filter != filter_dict.end()) 
                 {
                     filter_ValuePair entry = it_filter->second;
-                    std::cout << key <<" " << "1"<<" "<< "(" <<entry.offset << ","<< entry.vpaddr << ","<< entry.ip<< ")"<<std::endl;
+                    std::cout << key <<" " << "1"<<" "<< "(" <<entry.offset << ","<< entry.paddr << ","<< entry.vaddr<< ")"<<std::endl;
                     filter_dict.erase(key);
                 } 
             }
