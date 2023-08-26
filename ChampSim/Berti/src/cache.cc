@@ -1494,8 +1494,8 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                     // std::cout << (RQ.entry[RQ.head].full_addr >> LOG2_BLOCK_SIZE) << std::endl;
                     act_ValuePair value;
                     value.offset = page_addr_offset;
-                    value.paddr = line_addr_debug;
-                    value.vaddr = (RQ.entry[RQ.head].full_addr >> LOG2_BLOCK_SIZE);
+                    value.ppaddr = page_addr_debug;
+                    value.vpaddr = (RQ.entry[RQ.head].full_addr >> LOG2_PAGE_SIZE);
                     // std::cout<<(RQ.entry[RQ.head].full_addr >> LOG2_BLOCK_SIZE)<< " "<<line_addr_debug<< std::endl;
                     // std::cout << RQ.entry[index].address<< std::endl;
                     insertEntry(act_dict,filter_dict,RQ.entry[index].ip,value);
