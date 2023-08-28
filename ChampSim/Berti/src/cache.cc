@@ -1498,7 +1498,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                     value.vpaddr = (RQ.entry[RQ.head].full_addr >> LOG2_PAGE_SIZE);
                     // std::cout<<(RQ.entry[RQ.head].full_addr >> LOG2_BLOCK_SIZE)<< " "<<line_addr_debug<< std::endl;
                     // std::cout << RQ.entry[index].address<< std::endl;
-                    insertEntry(act_dict,filter_dict,RQ.entry[index].ip,value);
+                    insertEntry(act_dict,RQ.entry[index].ip,value);
                 }
             #endif
 
@@ -3183,14 +3183,6 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                     break;
                 }
             }
-            #ifdef MEMORY_ACCESS_PATTERN_DEBUG
-                if(cache_type == IS_L1D)
-                {
-                    //block[set][match_way].address就是物理地址，因为就是tag，块地址，只是这里的tag就等于块地址，实际上
-                    //由于业内偏移相同，所以物理页地址相同也就等价于块地址相同
-                    EvictEntry(act_dict,filter_dict,block[set][match_way].ip);
-                }
-            #endif
 
             return match_way;
         }
@@ -4542,88 +4534,52 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
         #endif
 
 #ifdef MEMORY_ACCESS_PATTERN_DEBUG
-        void CACHE::insertEntry(act_Dictionary& act_dict,filter_Dictionary& filter_dict, uint64_t key, act_ValuePair value) {
+        void CACHE::insertEntry(act_Dictionary& act_dict, uint64_t key, act_ValuePair value) {
+            //先遍历一圈，看是否有count>256的，那说明已经执行了256条其他的指令后，这个IP没有再被访问了           
+            for (auto& entry : act_dict) 
+            {
+                entry.second.count = entry.second.count+ 1;
+            }
             auto it_act = act_dict.find(key);
             if(it_act != act_dict.end())
             {
-                it_act->second.push_back(value);
-            }
-            else
-            {
-                for (auto& entry : filter_dict) 
+                if(it_act->second.count>=256)
                 {
-                    entry.second.count = entry.second.count+ 1;
-                }
-                auto it_filter = filter_dict.find(key);
-                if(it_filter != filter_dict.end())
-                {
-                    act_ValuePair value_act ;
-                    value_act.offset = it_filter->second.offset;
-                    value_act.paddr = it_filter->second.paddr;
-                    value_act.vaddr = it_filter->second.vaddr;
-                    act_ValueArray value_array = {value_act, value};
-                    act_dict[key] = value_array;
-                    filter_dict.erase(key);
+                    //驱逐这项
+                    it_act->second.array.push_back(value);
+                    PrintEntry(act_dict,key);
                 }
                 else
                 {
-                    if(filter_dict.size() >= 256)
-                    {
-                        uint64_t maxFirstValue = 0;
-                        uint64_t max_key;
-
-                        for (auto& entry : filter_dict) 
-                        {
-                            if (entry.second.count > maxFirstValue) 
-                            {
-                                maxFirstValue = entry.second.count;
-                                max_key = entry.first;
-                            }
-                        }
-                        filter_ValuePair entry_max = filter_dict[max_key];
-                        std::cout << max_key <<" " << "1F"<<" "<< "(" <<entry_max.offset << ","<< entry_max.paddr << ","<< entry_max.vaddr<< ")"<<std::endl;
-                        filter_dict.erase(max_key);
-                        filter_ValuePair value_filter;
-                        value_filter.count = 0;
-                        value_filter.offset = value.offset;
-                        value_filter.paddr = value.paddr;
-                        value_filter.vaddr = value.vaddr;
-                        filter_dict[key] = value_filter;
-                    }
-                    else
-                    {
-                        filter_ValuePair value_filter;
-                        value_filter.count = 0;
-                        value_filter.offset = value.offset;
-                        value_filter.paddr = value.paddr;
-                        value_filter.vaddr = value.vaddr;
-                        filter_dict[key] = value_filter;
-                    }
+                    it_act->second.array.push_back(value);
+                    it_act->second.count = 0;
                 }
+            }
+            else
+            {
+                act_ValueArray value_array = {value};
+                act_Value act_value;
+                act_value.array = value_array;
+                act_value.count = 0;
+                act_dict[key]=act_value;
             }
         }
 
-        void CACHE::EvictEntry(act_Dictionary& act_dict,filter_Dictionary& filter_dict, uint64_t key) {
+        void CACHE::PrintEntry(act_Dictionary& act_dict, uint64_t key) {
             auto it_act = act_dict.find(key);
             if (it_act != act_dict.end()) {
                 std::cout << key << " ";
-                std::cout << it_act->second.size() << " ";
-                for (const auto &entry : it_act->second) 
+                std::cout << it_act->second.array.size() << " ";
+                for (const auto &entry : it_act->second.array) 
                 {
-                    std::cout <<"(" <<entry.offset << ","<< entry.paddr << ","<< entry.vaddr<< ")";
+                    std::cout <<"(" <<entry.offset << ","<< entry.ppaddr << ","<< entry.vpaddr<< ")";
                 }
                 std::cout << std::endl;
                 act_dict.erase(key);
             } 
             else 
             {
-                auto it_filter = filter_dict.find(key);
-                if (it_filter != filter_dict.end()) 
-                {
-                    filter_ValuePair entry = it_filter->second;
-                    std::cout << key <<" " << "1"<<" "<< "(" <<entry.offset << ","<< entry.paddr << ","<< entry.vaddr<< ")"<<std::endl;
-                    filter_dict.erase(key);
-                } 
+                return;
             }
             return;
         }

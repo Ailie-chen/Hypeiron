@@ -64,12 +64,6 @@ uint32_t CACHE::lru_victim(uint32_t cpu, uint64_t instr_id, uint32_t set, const 
                 cout << "[" << NAME << "] " << __func__ << " instr_id: " << instr_id << " replace set: " << set << " way: " << way;
                 cout << hex << " address: " << (full_addr>>LOG2_BLOCK_SIZE) << " victim address: " << block[set][way].address << " data: " << block[set][way].data;
                 cout << dec << " lru: " << block[set][way].lru << endl; });
-                #ifdef MEMORY_ACCESS_PATTERN_DEBUG
-                    if(cache_type == IS_L1D)
-                    {
-                        EvictEntry(act_dict,filter_dict,block[set][way].ip);
-                    }
-                #endif
                 break;
             }
         }

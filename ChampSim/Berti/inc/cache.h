@@ -10,22 +10,21 @@
     typedef struct act_ValuePair_struct
     {
         uint64_t offset;
-        uint64_t paddr;
-        uint64_t vaddr;
+        uint64_t ppaddr; 
+        uint64_t vpaddr;
     } act_ValuePair;
 
-    //typedef std::pair<uint64_t, uint64_t> act_ValuePair;
     typedef std::vector<act_ValuePair> act_ValueArray;
-    typedef std::unordered_map<uint64_t, act_ValueArray> act_Dictionary;
-
-    typedef struct filter_ValuePair_struct
+    typedef struct act_Value_struct
     {
+        act_ValueArray array;
         uint64_t count;
-        uint64_t offset;
-        uint64_t paddr;
-        uint64_t vaddr;
-    } filter_ValuePair;
-    typedef std::unordered_map<uint64_t, filter_ValuePair> filter_Dictionary;
+    } act_Value;
+
+    //typedef std::pair<uint64_t, uint64_t> act_ValuePair;
+
+    typedef std::unordered_map<uint64_t, act_Value> act_Dictionary;
+
 #endif
 
 #define LOG2_BLOCKS_PER_PAGE 6
@@ -222,7 +221,6 @@ class CACHE : public MEMORY {
         #endif
         #ifdef MEMORY_ACCESS_PATTERN_DEBUG
             act_Dictionary act_dict;
-            filter_Dictionary filter_dict;
         #endif
 
     	     uint64_t pref_useful[NUM_CPUS][6],
@@ -393,8 +391,8 @@ class CACHE : public MEMORY {
          add_pq(PACKET *packet);
 
     #ifdef MEMORY_ACCESS_PATTERN_DEBUG
-            void insertEntry(act_Dictionary& act_dict,filter_Dictionary& filter_dict, uint64_t key, act_ValuePair value);
-            void EvictEntry(act_Dictionary& act_dict, filter_Dictionary& filter_dict,uint64_t key);
+            void insertEntry(act_Dictionary& act_dict, uint64_t key, act_ValuePair value);
+            void PrintEntry(act_Dictionary& act_dict, uint64_t key);
     #endif
 
     //return_data,当数据从下一级返回时，检查数据是否为0，并且将返回的信息放入MSHR中，通过检查这个就是cache在处理handle——fill时调用的
