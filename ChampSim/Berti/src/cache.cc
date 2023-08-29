@@ -1480,27 +1480,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
         // handle the oldest entry
         if ((RQ.entry[RQ.head].event_cycle <= current_core_cycle[read_cpu]) && (RQ.occupancy > 0)) {
             int index = RQ.head;
-            #ifdef MEMORY_ACCESS_PATTERN_DEBUG
-            //这里的地址应该为物理地址，因为用来索引cache了
-            //full_addr为虚拟地址，full_physical_address为物理地址，address为虚拟的块地址
-                //uint64_t line_addr_debug = (RQ.entry[RQ.head].full_addr >> LOG2_BLOCK_SIZE); // Line addr  
-                uint64_t line_addr_debug = (RQ.entry[RQ.head].full_physical_address >> LOG2_BLOCK_SIZE);//物理地址
-                uint64_t page_addr_debug = (line_addr_debug >> LOG2_BLOCKS_PER_PAGE);
-                uint64_t page_addr_offset = (line_addr_debug %(1 << LOG2_BLOCKS_PER_PAGE));
-                if(cache_type == IS_L1D && (RQ.entry[index].type == RFO || RQ.entry[index].type == LOAD) && (warmup_complete[read_cpu]==1))
-                {
-                    // std::cout<<RQ.entry[index].ip << ' '<<page_addr_debug << ' '<<page_addr_offset<<' '<<line_addr_debug << std::endl;
-                    // std::cout << RQ.entry[RQ.head].address << " "<< RQ.entry[RQ.head].full_addr <<std::endl;
-                    // std::cout << (RQ.entry[RQ.head].full_addr >> LOG2_BLOCK_SIZE) << std::endl;
-                    act_ValuePair value;
-                    value.offset = page_addr_offset;
-                    value.ppaddr = page_addr_debug;
-                    value.vpaddr = (RQ.entry[RQ.head].full_addr >> LOG2_PAGE_SIZE);
-                    // std::cout<<(RQ.entry[RQ.head].full_addr >> LOG2_BLOCK_SIZE)<< " "<<line_addr_debug<< std::endl;
-                    // std::cout << RQ.entry[index].address<< std::endl;
-                    insertEntry(act_dict,RQ.entry[index].ip,value);
-                }
-            #endif
+            
 
             // access cache
             uint32_t set = get_set(RQ.entry[index].address);
@@ -1750,10 +1730,10 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                         l1i_prefetcher_cache_operate(read_cpu, RQ.entry[index].ip, 1, block[set][way].prefetch);
                     if (cache_type == IS_L1D) 
                     {
-                        l1d_prefetcher_operate(RQ.entry[index].full_addr, RQ.entry[index].ip, 1, RQ.entry[index].type, RQ.entry[index].critical_ip_flag);	// RQ.entry[index].instr_id);
                         #ifdef MEMORY_ACCESS_PATTERN_DEBUG
-                            //std::cout << "ip: "<<RQ.entry[index].ip << std::endl;
-                            // std::cout << (RQ.entry[index].full_addr >> LOG2_BLOCK_SIZE) << std::endl;
+                            l1d_prefetcher_operate(RQ.entry[index].full_addr,RQ.entry[index].full_physical_address, RQ.entry[index].ip, 1, RQ.entry[index].type, RQ.entry[index].critical_ip_flag);	// RQ.entry[index].instr_id);
+                        #else
+                            l1d_prefetcher_operate(RQ.entry[index].full_addr, RQ.entry[index].ip, 1, RQ.entry[index].type, RQ.entry[index].critical_ip_flag);	// RQ.entry[index].instr_id);
                         #endif
                     }
                     else if ((cache_type == IS_L2C) && (RQ.entry[index].type != PREFETCH_TRANSLATION) && (RQ.entry[index].instruction == 0) && (RQ.entry[index].type != LOAD_TRANSLATION) && (RQ.entry[index].type != PREFETCH_TRANSLATION) && (RQ.entry[index].type != TRANSLATION_FROM_L1D)){	//Neelu: for dense region, only invoking on loads, check other l2c_pref_operate as well. 
@@ -2416,7 +2396,11 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                                 if(cache_type == IS_L1I)
                                     l1i_prefetcher_cache_operate(read_cpu, RQ.entry[index].ip, 0, 0);
                                 if (cache_type == IS_L1D) 
-                                    l1d_prefetcher_operate(RQ.entry[index].full_addr, RQ.entry[index].ip, 0, RQ.entry[index].type, RQ.entry[index].critical_ip_flag);	//RQ.entry[index].instr_id);
+                                    #ifdef MEMORY_ACCESS_PATTERN_DEBUG                                      
+                                        l1d_prefetcher_operate(RQ.entry[index].full_addr,RQ.entry[index].full_physical_address, RQ.entry[index].ip, 0, RQ.entry[index].type, RQ.entry[index].critical_ip_flag);	//RQ.entry[index].instr_id);
+                                    #else
+                                        l1d_prefetcher_operate(RQ.entry[index].full_addr, RQ.entry[index].ip, 0, RQ.entry[index].type, RQ.entry[index].critical_ip_flag);	//RQ.entry[index].instr_id);
+                                    #endif
                                 else if ((cache_type == IS_L2C) && (RQ.entry[index].type != PREFETCH_TRANSLATION) && (RQ.entry[index].instruction == 0) && (RQ.entry[index].type != LOAD_TRANSLATION) && (RQ.entry[index].type != PREFETCH_TRANSLATION) && (RQ.entry[index].type != TRANSLATION_FROM_L1D))
                                     l2c_prefetcher_operate(RQ.entry[index].address<<LOG2_BLOCK_SIZE, RQ.entry[index].ip, 0, RQ.entry[index].type, 0, RQ.entry[index].critical_ip_flag);	// RQ.entry[index].instr_id);
                                 else if (cache_type == IS_LLC)
@@ -2543,8 +2527,12 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                             {
                                 //@Vishal: This should never be executed as fill_level of L1 is 1 and minimum pf_origin_level is 1
                                 assert(0);
-                                l1d_prefetcher_operate(PQ.entry[index].full_addr, PQ.entry[index].ip, 1, PREFETCH, PQ.entry[index].critical_ip_flag);	//, PQ.entry[index].prefetch_id);
-                            }
+                                #ifdef  MEMORY_ACCESS_PATTERN_DEBUG                              
+                                    l1d_prefetcher_operate(PQ.entry[index].full_addr, PQ.entry[index].full_physical_address,PQ.entry[index].ip, 1, PREFETCH, PQ.entry[index].critical_ip_flag);	//, PQ.entry[index].prefetch_id);
+                                #else
+                                    l1d_prefetcher_operate(PQ.entry[index].full_addr, PQ.entry[index].ip, 1, PREFETCH, PQ.entry[index].critical_ip_flag);	//, PQ.entry[index].prefetch_id);
+                                #endif
+                            }   
                             else if ((cache_type == IS_L2C) && (RQ.entry[index].type != PREFETCH_TRANSLATION) && (RQ.entry[index].instruction == 0) && (RQ.entry[index].type != LOAD_TRANSLATION) && (RQ.entry[index].type != PREFETCH_TRANSLATION) && (RQ.entry[index].type != TRANSLATION_FROM_L1D))
                             {
                                 PQ.entry[index].pf_metadata = l2c_prefetcher_operate(block[set][way].address<<LOG2_BLOCK_SIZE, PQ.entry[index].ip, 1, PREFETCH, PQ.entry[index].pf_metadata, PQ.entry[index].critical_ip_flag);	//PQ.entry[index].prefetch_id);
@@ -2753,7 +2741,11 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                                         if(PQ.entry[index].pf_origin_level < fill_level)
                                         {
                                             if (cache_type == IS_L1D)//这里L1D怎么办？应该是pf_origin_level<=level？
-                                                l1d_prefetcher_operate(PQ.entry[index].full_addr, PQ.entry[index].ip, 0, PREFETCH, PQ.entry[index].critical_ip_flag);	// PQ.entry[index].prefetch_id);
+                                                #ifdef  MEMORY_ACCESS_PATTERN_DEBUG                                 
+                                                    l1d_prefetcher_operate(PQ.entry[index].full_addr, PQ.entry[index].full_physical_address,PQ.entry[index].ip, 0, PREFETCH, PQ.entry[index].critical_ip_flag);	//, PQ.entry[index].prefetch_id);
+                                                #else
+                                                    l1d_prefetcher_operate(PQ.entry[index].full_addr, PQ.entry[index].ip, 0, PREFETCH, PQ.entry[index].critical_ip_flag);	//, PQ.entry[index].prefetch_id);
+                                                #endif
                                             else if ((cache_type == IS_L2C) && (RQ.entry[index].type != PREFETCH_TRANSLATION) && (RQ.entry[index].instruction == 0) && (RQ.entry[index].type != LOAD_TRANSLATION) && (RQ.entry[index].type != PREFETCH_TRANSLATION) && (RQ.entry[index].type != TRANSLATION_FROM_L1D))
                                             {
                                                 PQ.entry[index].pf_metadata = l2c_prefetcher_operate(PQ.entry[index].address<<LOG2_BLOCK_SIZE, PQ.entry[index].ip, 0, PREFETCH, PQ.entry[index].pf_metadata, PQ.entry[index].critical_ip_flag);	// PQ.entry[index].prefetch_id);
@@ -4572,7 +4564,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                 std::cout << it_act->second.array.size() << " ";
                 for (const auto &entry : it_act->second.array) 
                 {
-                    std::cout <<"(" <<entry.offset << ","<< entry.ppaddr << ","<< entry.vpaddr<< ")";
+                    std::cout <<"(" <<entry.offset << ","<< entry.vpaddr << ","<< entry.ppaddr<< ")";
                 }
                 std::cout << std::endl;
                 act_dict.erase(key);

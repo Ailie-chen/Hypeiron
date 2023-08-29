@@ -2510,10 +2510,12 @@ void CACHE::l1d_prefetcher_initialize()
     #endif
 }
 
-void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit,
+void CACHE::l1d_prefetcher_operate(uint64_t addr,uint64_t physical_addr, uint64_t ip, uint8_t cache_hit,
         uint8_t type, uint8_t critical_ip_flag)
 { 
-    
+    #ifdef MEMORY_ACCESS_PATTERN_DEBUG
+        bool trigger_miss = false;
+    #endif
     #ifdef BOP_DEBUG
         mtx.lock();
     #endif
@@ -2534,6 +2536,9 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
 
     if (!cache_hit)
     {
+        #ifdef MEMORY_ACCESS_PATTERN_DEBUG
+            trigger_miss = true;
+        #endif
         // This is a miss
     
         // Add @ to latency table
@@ -2554,6 +2559,9 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
 
     } else if (cache_hit && shadow_cache_is_pf(cpu, line_addr))
     {
+        #ifdef MEMORY_ACCESS_PATTERN_DEBUG
+            trigger_miss = true;
+        #endif
         if(RECORD_IP_ADDR)
         {
             std::cout << "cache hit && is pf" << std::endl;
@@ -2585,6 +2593,27 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
         // No pf in hit
         //return;
     }
+    #ifdef MEMORY_ACCESS_PATTERN_DEBUG
+    //这里的地址应该为物理地址，因为用来索引cache了
+    //full_addr为虚拟地址，full_physical_address为物理地址，address为虚拟的块地址
+        //uint64_t line_addr_debug = (RQ.entry[RQ.head].full_addr >> LOG2_BLOCK_SIZE); // Line addr  
+        uint64_t line_addr_debug = (physical_addr >> LOG2_BLOCK_SIZE);//物理地址
+        uint64_t page_addr_debug = (line_addr_debug >> LOG2_BLOCKS_PER_PAGE);
+        uint64_t page_addr_offset = (line_addr_debug %(1 << LOG2_BLOCKS_PER_PAGE));
+        if(cache_type == IS_L1D && (type == RFO || type == LOAD) && (warmup_complete[cpu]==1) && trigger_miss)
+        {
+            // std::cout<<RQ.entry[index].ip << ' '<<page_addr_debug << ' '<<page_addr_offset<<' '<<line_addr_debug << std::endl;
+            // std::cout << RQ.entry[RQ.head].address << " "<< RQ.entry[RQ.head].full_addr <<std::endl;
+            // std::cout << (RQ.entry[RQ.head].full_addr >> LOG2_BLOCK_SIZE) << std::endl;
+            act_ValuePair value;
+            value.offset = page_addr_offset;
+            value.ppaddr = page_addr_debug;
+            value.vpaddr = line_addr >> LOG2_BLOCKS_PER_PAGE;
+            // std::cout<<(RQ.entry[RQ.head].full_addr >> LOG2_BLOCK_SIZE)<< " "<<line_addr_debug<< std::endl;
+            // std::cout << RQ.entry[index].address<< std::endl;
+            insertEntry(act_dict,pc,value);
+        }
+    #endif
     // Get stride to prefetch
     stride_t stride[MAX_PF];
     for (int i = 0; i < MAX_PF; i++) 

@@ -479,7 +479,11 @@ class CACHE : public MEMORY {
          dtlb_prefetcher_initialize(), 
          stlb_prefetcher_initialize(),
          prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit, uint8_t type),
-         l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit, uint8_t type, uint8_t critical_ip_flag), //, uint64_t prefetch_id),
+         #ifdef MEMORY_ACCESS_PATTERN_DEBUG
+            l1d_prefetcher_operate(uint64_t addr,uint64_t physical_addr, uint64_t ip, uint8_t cache_hit, uint8_t type, uint8_t critical_ip_flag), //, uint64_t prefetch_id),
+         #else
+            l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit, uint8_t type, uint8_t critical_ip_flag), //, uint64_t prefetch_id),
+         #endif
          itlb_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit, uint8_t type, uint64_t prefetch_id, uint8_t instruction),
          dtlb_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit, uint8_t type, uint64_t prefetch_id, uint8_t instruction),
          stlb_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit, uint8_t type, uint64_t prefetch_id, uint8_t instruction), 
