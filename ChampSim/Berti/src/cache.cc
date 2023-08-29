@@ -4574,7 +4574,14 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                     }
                     else
                     {
-                        std::cout<<"C" << ((int64_t(entry.vpaddr)-pre_vpaddr)<<LOG2_BLOCKS_PER_PAGE + (int64_t(entry.offset)-pre_offset)) << " ";
+                        if(int64_t(entry.vpaddr) == pre_vpaddr)
+                        {
+                            std::cout <<  (int64_t(entry.offset)-pre_offset) << " ";
+                        }
+                        else
+                        {
+                            std::cout<<"C" << ((int64_t(entry.vpaddr)-pre_vpaddr)<<LOG2_BLOCKS_PER_PAGE + (int64_t(entry.offset)-pre_offset)) << " ";
+                        }
                     }
                    pre_offset = int64_t(entry.offset);
                    pre_vpaddr = int64_t(entry.vpaddr);
