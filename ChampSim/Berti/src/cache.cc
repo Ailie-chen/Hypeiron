@@ -4558,13 +4558,26 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
         }
 
         void CACHE::PrintEntry(act_Dictionary& act_dict, uint64_t key) {
+            bool start = false;
+            int64_t pre_offset = 0;
+            int64_t pre_vpaddr = 0;
             auto it_act = act_dict.find(key);
             if (it_act != act_dict.end()) {
                 std::cout << key << " ";
                 std::cout << it_act->second.array.size() << " ";
                 for (const auto &entry : it_act->second.array) 
                 {
-                    std::cout <<"(" <<entry.offset << ","<< entry.vpaddr << ","<< entry.ppaddr<< ")";
+                    if(!start)
+                    {
+                        std::cout <<entry.offset<<" " ;
+                        start = true;
+                    }
+                    else
+                    {
+                        std::cout<<"C" << ((int64_t(entry.vpaddr)-pre_vpaddr)<<LOG2_BLOCKS_PER_PAGE + (int64_t(entry.offset)-pre_offset)) << " ";
+                    }
+                   pre_offset = int64_t(entry.offset);
+                   pre_vpaddr = int64_t(entry.vpaddr);
                 }
                 std::cout << std::endl;
                 act_dict.erase(key);
