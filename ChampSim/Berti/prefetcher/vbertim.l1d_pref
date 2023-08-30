@@ -3680,9 +3680,13 @@ void CACHE::l1d_prefetcher_initialize()
     #endif
 }
 
-
+#ifdef MEMORY_ACCESS_PATTERN_DEBUG
 void CACHE::l1d_prefetcher_operate(uint64_t addr,uint64_t physical_addr, uint64_t ip, uint8_t cache_hit,
         uint8_t type, uint8_t critical_ip_flag)
+#else
+void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit,
+        uint8_t type, uint8_t critical_ip_flag)
+#endif
 { 
     #ifdef MEMORY_ACCESS_PATTERN_DEBUG
         bool trigger_miss = false;
