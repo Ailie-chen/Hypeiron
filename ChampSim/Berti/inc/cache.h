@@ -3,7 +3,7 @@
 
 #include "memory_class.h"
 //#define PREFETCHER_CLASS_DEBUG
-#define MEMORY_ACCESS_PATTERN_DEBUG
+//#define MEMORY_ACCESS_PATTERN_DEBUG
 
 #ifdef MEMORY_ACCESS_PATTERN_DEBUG
     #include<unordered_map>
