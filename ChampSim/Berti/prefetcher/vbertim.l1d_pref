@@ -15,7 +15,7 @@
 
 
 //******预取器开关*********//
-//#define BERTI_IP_ON
+#define BERTI_IP_ON
 //#define BERTI_PAGES_ON
 //#define BINGO_BOP_ON
 //#define BINGO
@@ -3707,17 +3707,6 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
     ip = ((ip >> 1) ^ (ip >> 4));
     //ip = (ip >> 1) ^ (ip >> 4) ^ (ip >> 8);
     ip = ip & IP_MASK;
-    if(warmup_complete[cpu] == 1)
-    {
-        // std::cout << "pc:"<<pc <<" "<<"ip:"<<ip<<" ";
-        // std::cout << "offset:"<<(line_addr%(1<<LOG2_BLOCKS_PER_PAGE))<<" ";
-        // std::cout << "vbaddr:"<< line_addr<<" " ;
-        // std::cout << "vpaddr:"<< (line_addr>>LOG2_BLOCKS_PER_PAGE)<<" " ;
-        std::cout <<pc <<" "<<ip<<" ";
-        std::cout <<(line_addr%(1<<LOG2_BLOCKS_PER_PAGE))<<" ";
-        std::cout << line_addr<<" " ;
-        std::cout << (line_addr>>LOG2_BLOCKS_PER_PAGE)<<" " ;
-    }
 
     #ifdef BINGO_BOP_ON
       bool bingo_bop_triger = false;      
@@ -3734,10 +3723,6 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
     #endif
     if (!cache_hit)
     {
-        if(warmup_complete[cpu] == 1)
-        {
-            std::cout << "M" <<std::endl;
-        }
         #ifdef BERTI_IP_TABLE_DEBUG
         if(warmup_complete[cpu] == 1)
         {
@@ -3768,10 +3753,6 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
 
     } else if (cache_hit && shadow_cache_is_pf(cpu, line_addr))
     {
-        if(warmup_complete[cpu] == 1)
-        {
-            std::cout << "PH" <<std::endl;
-        }
         #ifdef BERTI_IP_TABLE_DEBUG
         if(warmup_complete[cpu] == 1)
         {
@@ -3805,10 +3786,6 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
         #endif
     } else
     {
-        if(warmup_complete[cpu] == 1)
-        {
-            std::cout << "H" <<std::endl;
-        }
         #ifdef BERTI_IP_TABLE_DEBUG
             if(warmup_complete[cpu] == 1)
             {
