@@ -3847,7 +3847,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
     }
     int launched_ip = 0;
     #ifdef BERTI_IP_ON 
-
+        if (prefetch_line(ip, addr, (line_addr + 1) << LOG2_BLOCK_SIZE, FILL_L1, 1))
         if(!vberti_table_get(ip, cpu, stride))
         {
             #ifdef BERTI_IP_TABLE_DEBUG
