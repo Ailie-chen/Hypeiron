@@ -1,6 +1,7 @@
 #ifndef VBERTI_H_
 #define VBERTI_H_
 
+#define BERTI_IP_TABLE_DEBUG
 
 #include "vberti_size.h"
 
@@ -190,4 +191,10 @@ void bop_deltas_table_init(uint32_t cpu);
 //对应的decode版本定义在cache.cc和cache.h中
 //metadata[8:7]来做标记：01：IP， 10：Pages 11：bop
 uint32_t metadata_encode(uint32_t metadata_origin, uint32_t prefetcher_type);
+#endif
+
+#ifdef BERTI_IP_TABLE_DEBUG
+    void print_latency_table(uint32_t cpu);
+    void print_history_table(uint32_t cpu);
+    void print_stride_table(uint32_t cpu);
 #endif

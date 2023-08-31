@@ -10,12 +10,13 @@
 
 //******debug开关********//
 #define RECORD_IP_ADDR false
-#define RECORD_DELTAS false
+//#define RECORD_DELTAS
 #define LANZAR_INT 8
 
+
 //******预取器开关*********//
-//#define BERTI_IP_ON
-#define BERTI_PAGES_ON
+#define BERTI_IP_ON
+//#define BERTI_PAGES_ON
 //#define BINGO_BOP_ON
 //#define BINGO
 //#define MLOP_ON
@@ -29,7 +30,6 @@
     //#define BOP_L2
     //#define BOP_DEBUG
 #endif
-
 
 std::mutex mtx;
 #ifdef BINGO
@@ -3569,6 +3569,7 @@ void find_and_update(uint32_t cpu, uint64_t latency, uint64_t tag,
         {
             // Only useful strides
             vberti_table_add(ip[i], cpu, stride);
+            //根据这里tag的获取方式，可以得知，这几个stride的ip也即tag是完全一样的
         }
     }
     #endif
@@ -3624,7 +3625,9 @@ void CACHE::l1d_prefetcher_initialize()
     shadow_cache_init(cpu);
     latency_table_init(cpu);
     history_table_init(cpu);
-    bop_deltas_table_init(cpu);
+    #ifdef BOP_ON
+        bop_deltas_table_init(cpu);
+    #endif
     #ifdef BINGO_BOP_ON
         prefetchers = vector<BOP>(NUM_CPUS, BOP((1 << LOG2_BLOCKS_PER_PAGE), RR_TABLE_SIZE, DEGREE));
     #endif
@@ -3708,9 +3711,18 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
     #ifdef BINGO_BOP_ON
       bool bingo_bop_triger = false;      
     #endif
-
+    #ifdef BERTI_IP_TABLE_DEBUG
+        bool trigger_miss = false;
+        std::cout << "pc:"<<pc <<" "<<"ip:"<<ip<<" ";
+        std::cout << "offset:"<<(line_addr%(1<<LOG2_BLOCKS_PER_PAGE))<<" ";
+        std::cout << "baddr:"<< line_addr;
+    #endif
     if (!cache_hit)
     {
+        #ifdef BERTI_IP_TABLE_DEBUG
+            std::cout << "M" <<std::endl;
+            trigger_miss = true;
+        #endif
         #ifdef MEMORY_ACCESS_PATTERN_DEBUG
             trigger_miss = true;
         #endif
@@ -3734,8 +3746,13 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
 
     } else if (cache_hit && shadow_cache_is_pf(cpu, line_addr))
     {
+        #ifdef BERTI_IP_TABLE_DEBUG
+            std::cout << "PH" <<std::endl;
+            trigger_miss = true;
+        #endif
         #ifdef MEMORY_ACCESS_PATTERN_DEBUG
             trigger_miss = true;
+            
         #endif
         if(RECORD_IP_ADDR)
         {
@@ -3759,6 +3776,9 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
         #endif
     } else
     {
+        #ifdef BERTI_IP_TABLE_DEBUG
+            std::cout << "H" <<std::endl;
+        #endif
         // Cache line access
         shadow_cache_pf(cpu, line_addr);
         if(RECORD_IP_ADDR)
@@ -3768,6 +3788,14 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
         // No pf in hit
         //return;
     }
+    #ifdef BERTI_IP_TABLE_DEBUG
+        if(trigger_miss)
+        {
+            //print_latency_table(cpu);
+            //print_history_table(cpu);
+            //print_stride_table(cpu);
+        }
+    #endif
     #ifdef MEMORY_ACCESS_PATTERN_DEBUG
     //这里的地址应该为物理地址，因为用来索引cache了
     //full_addr为虚拟地址，full_physical_address为物理地址，address为虚拟的块地址
@@ -3810,21 +3838,23 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
     }
     int launched_ip = 0;
     #ifdef BERTI_IP_ON 
+    #ifdef RECORD_DELTAS
+                std::cout << pc << " ";
+    #endif
+    
+
     if(!vberti_table_get(ip, cpu, stride))
     {
-        if(RECORD_DELTAS)
-        {
-            std::cout << "IP berti deltas no found" << std::endl;
-        }
+        #ifdef BERTI_IP_TABLE_DEBUG
+            std::cout << "no" << std::endl;
+        #endif
     }
     else
     {
-        if(RECORD_DELTAS)
-        {
-                std::cout << "IP berti deltas:" << std::endl;
-        }
+        uint32_t count = 0;
         for (int i = 0; i < MAX_PF_LAUNCH; i++)
         {
+
             uint64_t p_addr = (line_addr + stride[i].stride) << LOG2_BLOCK_SIZE;
             uint64_t p_b_addr = (p_addr >> LOG2_BLOCK_SIZE);
 
@@ -3841,20 +3871,22 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                 // Level of prefetching depends son CONFIDENCE
                 if (stride[i].rpl == L1 && mshr_load < MSHR_LIMIT)
                 {
+                    #ifdef RECORD_DELTAS
+                        std::cout << stride[i].stride << " ";
+                    #endif                  
                     fill_level = FILL_L1;
-                    if(RECORD_DELTAS)
-                    {
-                        std::cout << "deltas:"<< stride[i].stride << " L1" << " pref_addr:" \
-                        <<std::hex << p_b_addr << std::dec<< std::endl;
-                    }
+                    #ifdef BERTI_IP_TABLE_DEBUG
+                        std::cout <<"["<< stride[i].stride << " " << "L1"<<" "<<p_b_addr<<"]" <<" ";
+                    #endif
                 } else if (stride[i].rpl == L1 || stride[i].rpl == L2 
                         || stride[i].rpl == L2R ){
+                    #ifdef RECORD_DELTAS
+                        std::cout << stride[i].stride << " ";
+                    #endif                   
                     fill_level = FILL_L2;
-                    if(RECORD_DELTAS)
-                    {
-                        std::cout << "deltas:"<< stride[i].stride << " L2" << " pref_addr:" \
-                        <<std::hex << p_b_addr << std::dec<< std::endl;
-                    }
+                    #ifdef BERTI_IP_TABLE_DEBUG
+                        std::cout<<"[" << stride[i].stride << " " << "L2"<<" "<<p_b_addr <<"]" <<" ";
+                    #endif
                 } else
                 {
                     //return;
@@ -3869,14 +3901,23 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                     if (prefetch_line(ip, addr, p_addr, fill_level,1))
                 #endif
                 {
-                    if(RECORD_DELTAS)
-                    {
-                        std::cout << "prefetch"<< std::endl;
-                    }
                     launched_ip++;
                 }
             }
+            #ifdef BERTI_IP_TABLE_DEBUG
+                if(count == 6){
+                    count = 0;
+                    std::cout << endl;
+                }
+                count++;
+            #endif
         }
+        #ifdef BERTI_IP_TABLE_DEBUG
+            std::cout<<std::endl;
+        #endif
+        #ifdef RECORD_DELTAS
+            std::cout << endl;
+        #endif
         #ifdef BOP_DEBUG
             std::cout << "IP NUMS: "<< launched_ip <<std::endl;
         #endif
@@ -3953,19 +3994,15 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                 if (stride[i].rpl == L1 && mshr_load < MSHR_LIMIT)
                 {
                     fill_level = FILL_L1;
-                    if(RECORD_DELTAS)
-                    {
-                        std::cout << "deltas:"<< stride[i].stride << " L1" << " pref_addr:" \
-                        <<std::hex << p_b_addr << std::dec<< std::endl;
-                    }
+                    #ifdef BERTI_IP_TABLE_DEBUG
+                        std::cout << "deltas:"<< stride[i].stride << " L1" << " pref_addr:" <<std::hex << p_b_addr << std::dec<< std::endl;
+                    #endif
                 } else if (stride[i].rpl == L1 || stride[i].rpl == L2 
                         || stride[i].rpl == L2R ){
                     fill_level = FILL_L2;
-                    if(RECORD_DELTAS)
-                    {
-                        std::cout << "deltas:"<< stride[i].stride << " L2" << " pref_addr:" \
-                        <<std::hex << p_b_addr << std::dec<< std::endl;
-                    }
+                    #ifdef BERTI_IP_TABLE_DEBUG
+                        std::cout << "deltas:"<< stride[i].stride << " L2" << " pref_addr:"<<std::hex << p_b_addr << std::dec<< std::endl;
+                    #endif
                 } else
                 {
                     //return;
@@ -4127,4 +4164,128 @@ void CACHE::l1d_prefetcher_final_stats()
         uint32_t setting = (prefetcher_type & 0b11) << 7; // 设定值，位8和位7为你所需要的值，其它位为0
         return (metadata_origin & mask) | setting; // 清除位8和位7并设置为新值
     }
+#endif
+
+#ifdef BERTI_IP_TABLE_DEBUG
+void print_latency_table(uint32_t cpu)
+{
+    uint32_t count = 0;
+    std::cout << "latency" << std::endl;
+    for (uint32_t i = 0; i < LATENCY_TABLE_SIZE; i++)
+    {
+        //以addr的内容进行匹配
+        if(latencyt[cpu][i].tag != 0)
+        {
+            std::cout << i <<":" <<" " ;
+            std::cout << "{"<<latencyt[cpu][i].addr << " ";
+            std::cout << latencyt[cpu][i].time << " ";
+            std::cout << latencyt[cpu][i].tag << " " ;
+            if(!latencyt[cpu][i].pf)
+            {
+                std::cout << "0" ;  
+            }else{
+                std::cout << "1" ;
+            }
+            std::cout <<"}";
+            if(count == 6){
+                count = 0;
+                std::cout << std::endl;
+            }
+            count++;
+        }
+    }
+}
+void print_history_table(uint32_t cpu)
+{
+    
+    std::cout << "history" << std::endl;
+    for (uint32_t set = 0; set< HISTORY_TABLE_SET; set++)
+    {
+        uint32_t count = 0;
+        bool start = false;
+        history_table_t *pointer = history_pointers[cpu][set];
+        do
+        { 
+            if(pointer->tag != 0)
+            {
+                if(!start){
+                    std::cout << "set"<< set <<": ";
+                    start = true;
+                }
+                std::cout <<"{"<< pointer->tag <<" ";
+                std::cout << pointer->addr <<" ";
+                std::cout << pointer->time <<"}";
+                if(count == 6){
+                    count = 0;
+                    std::cout << std::endl;
+                }
+                count++;
+            }
+
+            if (pointer == historyt[cpu][set])
+            {
+                pointer = &historyt[cpu][set][HISTORY_TABLE_WAY - 1];
+            } else pointer--;
+        } while (pointer != history_pointers[cpu][set]);
+        std::cout << std::endl;
+    }
+}
+
+void print_stride_table(uint32_t cpu)
+{
+    std::cout << "stride" << std::endl;
+    //stride的map的key就是tag
+    std::queue<uint64_t> tag_fifo;
+    tag_fifo = vbertit_queue[cpu];
+    while (!tag_fifo.empty()) 
+    {   
+        uint32_t count = 0;
+        uint64_t tag = tag_fifo.front();
+        std::cout <<"tag:" << tag << " ";
+        tag_fifo.pop();
+        vberti_t *tmp = vbertit[cpu][tag];
+        std::cout << tmp->conf << " ";
+        std::cout << tmp->total_used;
+        stride_t *strides = tmp->stride;
+        for (int i = 0; i < BERTI_TABLE_STRIDE_SIZE; i++)
+        {
+            if(strides[i].conf != 0)
+            {
+                std::cout <<"{"<<strides[i].stride <<" ";
+                std::cout << strides[i].conf << " "; //置信度
+                switch(strides[i].rpl)
+                {
+                    case L1:
+                    {
+                        std::cout << "L1";//根据strides[i].conf/strides.conf置信度来判断放到哪个级别的cache中
+                        break;
+                    }
+                    case L2:
+                    {
+                        std::cout << "L2";//根据strides[i].conf/strides.conf置信度来判断放到哪个级别的cache中
+                        break;
+                    }
+                    case L2R:
+                    {
+                        std::cout << "L2R";//根据strides[i].conf/strides.conf置信度来判断放到哪个级别的cache中
+                        break;
+                    }
+                    case R:
+                    {
+                        std::cout << "R" ;//根据strides[i].conf/strides.conf置信度来判断放到哪个级别的cache中
+                        break;
+                    }
+                }
+                std::cout << "}";
+                if(count == 6){
+                    count = 0;
+                    std::cout << std::endl;
+                }
+                count++;
+            }
+        }
+        std::cout <<std::endl;
+    }
+
+}
 #endif
