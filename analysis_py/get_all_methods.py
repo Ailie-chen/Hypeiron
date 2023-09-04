@@ -10,7 +10,7 @@ if not os.path.exists(save_path):
  # 如果目录不存在，则创建该目录
     os.makedirs(save_path)
 traces = ['spec2k17']
-dates = ['0703','0713','0734']
+dates = ['0703','0713','0822','0816','0817','0821','0825','0826']
 #dates = ['0703','0704',]
 #metrics = ['IPC','IPCI','L1D Accuracy','L1D Coverage']
 metrics = ['IPC','IPCI','L1D LOAD_ACCURACY','L1D MPKI','L1D Overprediction','L1D traffic']
@@ -24,6 +24,12 @@ dic = dict([ ('vberti', 'IP'),
         ('0709', 'cp_bingo_bop(32)'),
         ('0710', 'bingo_bop(32)'),
         ('0713', 'IP+pages+bingo_bop(32)'),
+        ('0816', 'IP+Bingo'),
+        ('0817', 'IP+Bingo+Bop'),
+        ('0822', 'Bingo'),
+        ('0821', 'Berti+nextline'),
+        ('0825', 'Berti_PP'),
+        ('0826', 'Berti_pp+Berti')
 
 
 ])
@@ -73,8 +79,8 @@ for trace in traces:
                     if values[i] == '-':
                         values[i] = 0
                 values = values.astype(float)
-                # ax.bar(bar_pos + bar_width * k, values, width=bar_width, label=dic[key[0]])
-                ax.bar(bar_pos + bar_width * k, values, width=bar_width, label=date)
+                ax.bar(bar_pos + bar_width * k, values, width=bar_width, label=dic[key[0]])
+                #ax.bar(bar_pos + bar_width * k, values, width=bar_width, label=key[0])
                 k = k + 1
         plt.subplots_adjust(bottom=0.2)
         plt.xticks(bar_pos + bar_width * len(dates)/2, benchmarks_name, rotation=45, fontsize=15, ha='right')

@@ -63,7 +63,7 @@ typedef struct __l1d_current_page_entry {
   uint64_t last_burst; // 6 bits
   uint64_t lru; // 6 bits
 } l1d_current_page_entry;
-
+//存放页面的访问信息
 l1d_current_page_entry l1d_current_pages_table[NUM_CPUS][L1D_CURRENT_PAGES_TABLE_ENTRIES];
 
 void l1d_init_current_pages_table() {
@@ -144,6 +144,7 @@ uint64_t l1d_update_demand_current_pages_table(uint64_t index, uint64_t offset) 
 void l1d_add_berti_current_pages_table(uint64_t index, int berti) {
   assert(berti != 0);
   assert(index < L1D_CURRENT_PAGES_TABLE_ENTRIES);
+  //这个循环里面的顺序需要调整一下，如果时按照顺序来条件新条目的话，不需要改变顺序
   for (int i = 0; i < L1D_CURRENT_PAGES_TABLE_NUM_BERTI; i++) {
     if (l1d_current_pages_table[l1d_cpu_id][index].berti_ctr[i] == 0) {
       l1d_current_pages_table[l1d_cpu_id][index].berti[i] = berti;
@@ -174,7 +175,7 @@ void l1d_remove_current_table_entry(uint64_t index) {
 #define L1D_PREV_REQUESTS_TABLE_ENTRIES (1 << L1D_PREV_REQUESTS_TABLE_INDEX_BITS)
 #define L1D_PREV_REQUESTS_TABLE_MASK (L1D_PREV_REQUESTS_TABLE_ENTRIES - 1)
 #define L1D_PREV_REQUESTS_TABLE_NULL_POINTER L1D_CURRENT_PAGES_TABLE_ENTRIES
-
+//页面访问时间，指针指向page——tabel中的项的索引，
 typedef struct __l1d_prev_request_entry {
   uint64_t page_addr_pointer; // 6 bits
   uint64_t offset; // 6 bits
@@ -254,6 +255,7 @@ void l1d_get_berti_prev_requests_table(uint64_t pointer, uint64_t offset, uint64
 #define L1D_PREV_PREFETCHES_TABLE_NULL_POINTER L1D_CURRENT_PAGES_TABLE_ENTRIES
 
 // We do not have access to the MSHR, so we aproximate it using this structure.
+//多个预取表的条目的指针可能指向同一个页的条目的索引
 typedef struct __l1d_prev_prefetch_entry {
   uint64_t page_addr_pointer; // 6 bits
   uint64_t offset; // 6 bits
@@ -469,53 +471,91 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
 
   // Update current pages table
   // Find the entry
+  //可以认为pages table是按照内容进行索引的，返回页地址相同的那一个条目的索引
   uint64_t index = l1d_get_current_pages_entry(page_addr);
 
   // If not accessed recently
+  //如果没有这个页的信息，或者当前页的访问偏移在之前没有出现过，那么就为其添加条目
   if (index == L1D_CURRENT_PAGES_TABLE_ENTRIES
-      || !l1d_requested_offset_current_pages_table(index, offset)) {
+      || !l1d_requested_offset_current_pages_table(index, offset)) 
+  {
+    //有页信息但是没有offset
     //cout << "OFFSETS: " << hex << ip << " " << page_addr << " " << dec << offset << endl;
-        
-    if (index < L1D_CURRENT_PAGES_TABLE_ENTRIES) { // Found
+
+    //这种情况是是新的offset,这种情况说明当前访问是hot page,还不是cold page，没有页需要被剔除到
+    //recorded tabel中，也就是这个页之前被访问过
+    if (index < L1D_CURRENT_PAGES_TABLE_ENTRIES) 
+    { // Found
       //cout << " FOUND" << endl;
 
       // If offset found, already requested, so return;
       if (l1d_requested_offset_current_pages_table(index, offset)) return;
 
+      //更新对应条目的offset向量，更新所有pages条目的lru优先级，并且返回第一次访问这个page的ip地址
       uint64_t first_ip = l1d_update_demand_current_pages_table(index, offset);
+
+      //l1d_ip_table中记录这个ip指向的pages——table的条目的索引，因为这是个hot page
       assert(l1d_ip_table[l1d_cpu_id][first_ip & L1D_IP_TABLE_INDEX_MASK] != L1D_IP_TABLE_NULL_POINTER);
 
       // Update berti
-      if (cache_hit) {
-	uint64_t pref_latency = l1d_get_latency_prev_prefetches_table(index, offset);
-	if (pref_latency != 0) {
-	  // Find berti distance from pref_latency cycles before
-	  int berti[L1D_CURRENT_PAGES_TABLE_NUM_BERTI_PER_ACCESS]; 
-	  l1d_get_berti_prev_requests_table(index, offset, current_core_cycle[cpu] - pref_latency, berti);
-	  for (int i = 0; i < L1D_CURRENT_PAGES_TABLE_NUM_BERTI_PER_ACCESS; i++) {
-	    if (berti[i] == 0) break; 
-	    assert(abs(berti[i]) < L1D_PAGE_BLOCKS);
-	    l1d_add_berti_current_pages_table(index, berti[i]);
-	  }
+      //确认是预取回来的块，并且已经获得了预取这个块回来所需要的时间，那么就可以获得及时
+      //访问回来得到的delta
+      if (cache_hit) 
+      {
+        //在预取表中查找当前是否是预取的块，如果是并且已经预取完成了，那么就可以获得取回这个数据所需要的时间
+	      uint64_t pref_latency = l1d_get_latency_prev_prefetches_table(index, offset);
 
-	  // Eliminate a prev prefetch since it has been used
-	  l1d_reset_entry_prev_prefetches_table(index, offset);
-	}  
+        //确认是预取回来的块，并且已经获得了预取这个块回来所需要的时间，那么就可以获得及时
+        //访问回来得到的delta
+	      if (pref_latency != 0) 
+        {
+          // Find berti distance from pref_latency cycles before
+          int berti[L1D_CURRENT_PAGES_TABLE_NUM_BERTI_PER_ACCESS]; 
+
+          l1d_get_berti_prev_requests_table(index, offset, current_core_cycle[cpu] - pref_latency, berti);
+          for (int i = 0; i < L1D_CURRENT_PAGES_TABLE_NUM_BERTI_PER_ACCESS; i++) 
+          {
+            if (berti[i] == 0) break; 
+            assert(abs(berti[i]) < L1D_PAGE_BLOCKS);
+
+            //更新或者加入每一个delta的得分
+            l1d_add_berti_current_pages_table(index, berti[i]);
+          }
+
+          // Eliminate a prev prefetch since it has been used
+          //可以消除预取表中这一项了，因为已经统计过信息，使用完成了，相当于预取命中了
+          l1d_reset_entry_prev_prefetches_table(index, offset);
+	      }  
       }
     
-      if (first_ip != ip) {
-	// Assign same pointer to group IPs
-	l1d_ip_table[l1d_cpu_id][ip & L1D_IP_TABLE_INDEX_MASK] = l1d_ip_table[l1d_cpu_id][first_ip & L1D_IP_TABLE_INDEX_MASK]; 
+      //如果第一次访问这个页的ip与当前访问这个页的ip不同
+      if (first_ip != ip) 
+      {
+        // Assign same pointer to group IPs
+        //所有访问同一个页的ip表的指针都等于访问这个页的第一个ip指向记录表的指针
+        //这个与前面的预取并不矛盾
+        l1d_ip_table[l1d_cpu_id][ip & L1D_IP_TABLE_INDEX_MASK] = l1d_ip_table[l1d_cpu_id][first_ip & L1D_IP_TABLE_INDEX_MASK]; 
       }
-    } else { // Not found: Add entry
+    } 
+    //如果这次访问的是一个冷页，主要是将页驱逐，并且为新页分配一个ip table的指针
+    else 
+    { 
+      //没有页信息，第一次访问一个页
+      // Not found: Add entry
      
       // Find victim and clear pointers to it
       uint64_t victim_index = l1d_get_lru_current_pages_entry(); // already updates lru
       assert(victim_index < L1D_CURRENT_PAGES_TABLE_ENTRIES);
+
+      //所有指向被驱逐的页的条目的指针都要被置为无效
       l1d_reset_pointer_prev_requests(victim_index); // Not valid anymore
       l1d_reset_pointer_prev_prefetches(victim_index); // Not valid anymore
 
+      //将被剔除的页面的信息放入到record表中
       // Copy victim to record table
+      //在record中的索引已经早已分配好，由表项中的第一次访问的页的ip来确定
+      //在将current table中的页分配给record table中的页时，需要将offset vector，以及得分最大的
+      //offset以及offset对应的得分都传递给record表,但是offset的得分没有用到
       l1d_record_current_page(victim_index);
 
       // Add new current page
@@ -523,34 +563,58 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
       l1d_add_current_pages_table(index, page_addr, ip & L1D_IP_TABLE_INDEX_MASK, offset);
 
       // Set pointer in IP table
+      //对于一个cold page,在record表中查找是否有对应的条目,因为page在currrent table中
+      //的存在是有生命周期的，所以很有可能recorded table中还存在有对应的条目
+      //同一个page在record table中可能有多个项，因为访问的offset不同
       uint64_t index_record = l1d_get_entry_record_pages_table(page_addr, offset);
       // The ip pointer is null
-      if (l1d_ip_table[l1d_cpu_id][ip & L1D_IP_TABLE_INDEX_MASK] == L1D_IP_TABLE_NULL_POINTER) { 
-	if (index_record == L1D_RECORD_PAGES_TABLE_ENTRIES) { // Page not recorded
-	  // Get free record page pointer.
-	  uint64_t new_pointer = l1d_get_lru_record_pages_entry();
-	  l1d_ip_table[l1d_cpu_id][ip & L1D_IP_TABLE_INDEX_MASK] = new_pointer;
-	} else {
-	  l1d_ip_table[l1d_cpu_id][ip & L1D_IP_TABLE_INDEX_MASK] = index_record;
-	}
-      } else if (l1d_ip_table[l1d_cpu_id][ip & L1D_IP_TABLE_INDEX_MASK] != index_record) {
-	// If the current IP is valid, but points to another address
-	// we replicate it in another record entry (lru)
-	// such that the recorded page is not deleted when the current entry summarizes
-	uint64_t new_pointer = l1d_get_lru_record_pages_entry();
-	l1d_copy_entries_record_pages_table(l1d_ip_table[l1d_cpu_id][ip & L1D_IP_TABLE_INDEX_MASK], new_pointer);
-	l1d_ip_table[l1d_cpu_id][ip & L1D_IP_TABLE_INDEX_MASK] = new_pointer;
+      //如果访问这个当前的冷页的第一个ip在ip table中没有索引
+      //这种情况下又分了record table中是否有对应的条目来讨论
+      if (l1d_ip_table[l1d_cpu_id][ip & L1D_IP_TABLE_INDEX_MASK] == L1D_IP_TABLE_NULL_POINTER) 
+      { 
+        //在表中没有ip没有record，也就是这个指针和页面都没有出现过
+        //那么就为其在record表中分配一个新的条目，并且将ip 表中的ip对应的指针指向record table的项
+        if (index_record == L1D_RECORD_PAGES_TABLE_ENTRIES) 
+        { // Page not recorded
+          // Get free record page pointer.
+          uint64_t new_pointer = l1d_get_lru_record_pages_entry();
+          l1d_ip_table[l1d_cpu_id][ip & L1D_IP_TABLE_INDEX_MASK] = new_pointer;
+        }
+        //如果这个ip不存在，但是这个页在record table中存在，说明上一次访问这个页的第一个ip和当前的ip不同
+        //就将只需要将现在的ip也指向record table中的那个页
+        else 
+        {
+          l1d_ip_table[l1d_cpu_id][ip & L1D_IP_TABLE_INDEX_MASK] = index_record;
+	      }
+      } 
+      //这种情况是，ip table中有索引（同一个ip但是访问的是其他页），但是record table中没有索引，
+      //或者record table中有索引，但是指向的不是同一个页，这种也是同一个ip但是访问的是其他页
+      else if (l1d_ip_table[l1d_cpu_id][ip & L1D_IP_TABLE_INDEX_MASK] != index_record) 
+      {
+        // If the current IP is valid, but points to another address
+        // we replicate it in another record entry (lru)
+        // such that the recorded page is not deleted when the current entry summarizes
+        //由于是新页，所以需要重新分配一个页
+        uint64_t new_pointer = l1d_get_lru_record_pages_entry();
+        //并且将ip对应的页的信息先赋给这个新页，并且更新ip的指针，为这个新页的地址
+        l1d_copy_entries_record_pages_table(l1d_ip_table[l1d_cpu_id][ip & L1D_IP_TABLE_INDEX_MASK], new_pointer);
+        l1d_ip_table[l1d_cpu_id][ip & L1D_IP_TABLE_INDEX_MASK] = new_pointer;
       }
     }
 
+    //记录访问的信息表
     l1d_add_prev_requests_table(index, offset, current_core_cycle[cpu]);
        
     // PREDICT
     uint64_t u_vector = 0;
+    //first是当前访问的hot page的第一个偏移
     uint64_t first_offset = l1d_current_pages_table[l1d_cpu_id][index].first_offset;
     int berti = 0;
     bool recorded = false;
     
+    //分别找到三种匹配，ip 匹配，ip通常与page联系在一起，但是找到的是record page的索引，或者没有
+    //pgo是page和offset的索引，所以找的是，当前页和页的第一个offset都满足的record page的索引
+    //pg是page的索引，找的是page的索引
     uint64_t ip_pointer = l1d_ip_table[l1d_cpu_id][ip & L1D_IP_TABLE_INDEX_MASK];
     uint64_t pgo_pointer = l1d_get_entry_record_pages_table(page_addr, first_offset);
     uint64_t pg_pointer = l1d_get_entry_record_pages_table(page_addr);
@@ -559,157 +623,210 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
     uint64_t match_confidence = 0;
     
     // If match with current page+first_offset, use record
+    //如果page和起始的offset都匹配，并且当前在这个页的访问轨迹和之前record table中记录的访问轨迹完全一致
+    //这种属于高度匹配
     if (pgo_pointer != L1D_RECORD_PAGES_TABLE_ENTRIES
-    	&& (l1d_record_pages_table[l1d_cpu_id][pgo_pointer].u_vector | l1d_current_pages_table[l1d_cpu_id][index].u_vector) == l1d_record_pages_table[l1d_cpu_id][pgo_pointer].u_vector) {
+    	&& (l1d_record_pages_table[l1d_cpu_id][pgo_pointer].u_vector | l1d_current_pages_table[l1d_cpu_id][index].u_vector) == l1d_record_pages_table[l1d_cpu_id][pgo_pointer].u_vector) 
+    {
       u_vector =  l1d_record_pages_table[l1d_cpu_id][pgo_pointer].u_vector;
       berti =  l1d_record_pages_table[l1d_cpu_id][pgo_pointer].berti;
       match_confidence = 1; // High confidence
       recorded = true;
-    } else
+    } 
+    else
     // If match with current ip+first_offset, use record
+    //如果当前ip访问的页的偏移，与这个ip之前访问的页的偏移相同，而且页内的访问轨迹也相同
     if (l1d_record_pages_table[l1d_cpu_id][ip_pointer].first_offset == first_offset
-    	&& (l1d_record_pages_table[l1d_cpu_id][ip_pointer].u_vector | l1d_current_pages_table[l1d_cpu_id][index].u_vector) == l1d_record_pages_table[l1d_cpu_id][ip_pointer].u_vector) {
+    	&& (l1d_record_pages_table[l1d_cpu_id][ip_pointer].u_vector | l1d_current_pages_table[l1d_cpu_id][index].u_vector) == l1d_record_pages_table[l1d_cpu_id][ip_pointer].u_vector) 
+    {
       u_vector =  l1d_record_pages_table[l1d_cpu_id][ip_pointer].u_vector;
       berti =  l1d_record_pages_table[l1d_cpu_id][ip_pointer].berti;
       match_confidence = 1; // High confidence
       recorded = true;
     } else
     // If no exact match, trust current if it has already a berti
-    if (current_berti != 0 && berti_confidence >= L1D_BERTI_CTR_MED_HIGH_CONFIDENCE) { // Medium-High confidence
+    //如果没有匹配的，但是有分数比较高的delta,那么就用当前这个hot page的信息，并且只选择一个得分最高的delta
+    if (current_berti != 0 && berti_confidence >= L1D_BERTI_CTR_MED_HIGH_CONFIDENCE) 
+    { // Medium-High confidence
       u_vector =  l1d_current_pages_table[l1d_cpu_id][index].u_vector;
       berti = current_berti;
     } else
     // If match with current page, use record
-    if (pg_pointer != L1D_RECORD_PAGES_TABLE_ENTRIES) { // Medium confidence
+    //如果当前hot page没有合适的，但是有这个页之前的信息
+    if (pg_pointer != L1D_RECORD_PAGES_TABLE_ENTRIES) 
+    { // Medium confidence
       u_vector =  l1d_record_pages_table[l1d_cpu_id][pg_pointer].u_vector;
       berti =  l1d_record_pages_table[l1d_cpu_id][pg_pointer].berti;
       recorded = true;
     } else
     // If match with current ip, use record
-    if (l1d_record_pages_table[l1d_cpu_id][ip_pointer].u_vector) { // Medium confidence
+    //这个ip应该会指向这个页，所以这个循环应该是进不去的？
+    if (l1d_record_pages_table[l1d_cpu_id][ip_pointer].u_vector) 
+    { // Medium confidence
       u_vector =  l1d_record_pages_table[l1d_cpu_id][ip_pointer].u_vector;
       berti =  l1d_record_pages_table[l1d_cpu_id][ip_pointer].berti;
       recorded = true;
     }
 
     // Burst for the first access of a page or if pending bursts
-    if (first_offset == offset || l1d_current_pages_table[l1d_cpu_id][index].last_burst != 0) {
+    //如果当前是对一个hot page的第一次访问，或者是上一次突发结束的不为0，说明需要突发
+    if (first_offset == offset || l1d_current_pages_table[l1d_cpu_id][index].last_burst != 0) 
+    {
       uint64_t first_burst;
-      if (l1d_current_pages_table[l1d_cpu_id][index].last_burst != 0) {
-	first_burst = l1d_current_pages_table[l1d_cpu_id][index].last_burst;
-	l1d_current_pages_table[l1d_cpu_id][index].last_burst = 0;
-      } else if (berti >= 0) {
-	first_burst = offset + 1;
-      }	else {
-	first_burst = offset - 1;
+      if (l1d_current_pages_table[l1d_cpu_id][index].last_burst != 0) 
+      {
+        first_burst = l1d_current_pages_table[l1d_cpu_id][index].last_burst;
+        l1d_current_pages_table[l1d_cpu_id][index].last_burst = 0;
+      } 
+      else if (berti >= 0) 
+      {
+	      first_burst = offset + 1;
+      }	
+      else 
+      {
+	      first_burst = offset - 1;
       }
-      if (recorded && match_confidence) {
-	int bursts = 0;
-	if (berti > 0) {
-	  for (uint64_t i = first_burst; i < offset+berti; i++) {
-	    if (i >= L1D_PAGE_BLOCKS) break; // Stay in the page
-	    // Only if previously requested and not demanded
-	    uint64_t pf_line_addr = (page_addr << L1D_PAGE_BLOCKS_BITS) | i;
-	    uint64_t pf_addr = pf_line_addr << LOG2_BLOCK_SIZE;
-	    uint64_t pf_page_addr = pf_line_addr >> L1D_PAGE_BLOCKS_BITS;
-	    uint64_t pf_offset = pf_line_addr & L1D_PAGE_OFFSET_MASK;
-	    if ((((uint64_t)1 << i) & u_vector)
-		&& !l1d_requested_offset_current_pages_table(index, pf_offset)) {
-	      if (PQ.occupancy < PQ.SIZE && bursts < L1D_MAX_NUM_BURST_PREFETCHES) {
-		bool prefetched = prefetch_line(ip, addr, pf_addr, FILL_L1, 0);
-		if (prefetched) {
-		  assert(pf_page_addr == page_addr);
-		  l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
-		  bursts++;
-		}
-	      } else { // record last burst
-		l1d_current_pages_table[l1d_cpu_id][index].last_burst = i;
-		break;
-	      }
-	    }
-	  }
-	} else if (berti < 0) {
-	  for (int i = first_burst; i > ((int)offset)+berti; i--) {
-	    if (i < 0) break; // Stay in the page
-	    // Only if previously requested and not demanded
-	    uint64_t pf_line_addr = (page_addr << L1D_PAGE_BLOCKS_BITS) | i;
-	    uint64_t pf_addr = pf_line_addr << LOG2_BLOCK_SIZE;
-	    uint64_t pf_page_addr = pf_line_addr >> L1D_PAGE_BLOCKS_BITS;
-	    uint64_t pf_offset = pf_line_addr & L1D_PAGE_OFFSET_MASK;
-	    if ((((uint64_t)1 << i) & u_vector)
-		&& !l1d_requested_offset_current_pages_table(index, pf_offset)) {
-	      if (PQ.occupancy < PQ.SIZE && bursts < L1D_MAX_NUM_BURST_PREFETCHES) {
-		bool prefetched = prefetch_line(ip, addr, pf_addr, FILL_L1, 0);
-		if (prefetched) {
-		  assert(pf_page_addr == page_addr);
-		  l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
-		  bursts++;
-		}
-	      } else { // record last burst
-		l1d_current_pages_table[l1d_cpu_id][index].last_burst = i;
-		break;
-	      }
-	    }
-	  }
-	} else { // berti == 0 (zig zag of all)
-	  for (int i = first_burst, j = (first_offset << 1) - i;
-	       i < L1D_PAGE_BLOCKS || j >= 0; i++, j = (first_offset << 1) - i) {
-	    // Only if previously requested and not demanded
-	    // Dir ++
-	    uint64_t pf_line_addr = (page_addr << L1D_PAGE_BLOCKS_BITS) | i;
-	    uint64_t pf_addr = pf_line_addr << LOG2_BLOCK_SIZE;
-	    uint64_t pf_page_addr = pf_line_addr >> L1D_PAGE_BLOCKS_BITS;
-	    uint64_t pf_offset = pf_line_addr & L1D_PAGE_OFFSET_MASK;
-	    if ((((uint64_t)1 << i) & u_vector)
-		&& !l1d_requested_offset_current_pages_table(index, pf_offset)) {
-	      if (PQ.occupancy < PQ.SIZE && bursts < L1D_MAX_NUM_BURST_PREFETCHES) {
-		bool prefetched = prefetch_line(ip, addr, pf_addr, FILL_L1, 0);
-		if (prefetched) {
-		  assert(pf_page_addr == page_addr);
-		  l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
-		  bursts++;
-		}
-	      } else { // record last burst
-		l1d_current_pages_table[l1d_cpu_id][index].last_burst = i;
-		break;
-	      }
-	    }
-	    // Dir --
-	    pf_line_addr = (page_addr << L1D_PAGE_BLOCKS_BITS) | j;
-	    pf_addr = pf_line_addr << LOG2_BLOCK_SIZE;
-	    pf_page_addr = pf_line_addr >> L1D_PAGE_BLOCKS_BITS;
-	    pf_offset = pf_line_addr & L1D_PAGE_OFFSET_MASK;
-	    if ((((uint64_t)1 << j) & u_vector)
-		&& !l1d_requested_offset_current_pages_table(index, pf_offset)) {
-	      if (PQ.occupancy < PQ.SIZE && bursts < L1D_MAX_NUM_BURST_PREFETCHES) {
-		bool prefetched = prefetch_line(ip, addr, pf_addr, FILL_L1, 0);
-		if (prefetched) {
-		  assert(pf_page_addr == page_addr);
-		  l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
-		  bursts++;
-		}
-	      } else {
-		// record only positive burst
-	      }
-	    }
-	  }
-	}  
-      } else { // not recorded
+
+
+      if (recorded && match_confidence) 
+      {
+	      int bursts = 0;
+	      if (berti > 0) 
+        {
+          for (uint64_t i = first_burst; i < offset+berti; i++) 
+          {
+            if (i >= L1D_PAGE_BLOCKS) break; // Stay in the page
+            // Only if previously requested and not demanded
+            uint64_t pf_line_addr = (page_addr << L1D_PAGE_BLOCKS_BITS) | i;
+            uint64_t pf_addr = pf_line_addr << LOG2_BLOCK_SIZE;
+            uint64_t pf_page_addr = pf_line_addr >> L1D_PAGE_BLOCKS_BITS;
+            uint64_t pf_offset = pf_line_addr & L1D_PAGE_OFFSET_MASK;
+            //l1d_requested_offset_current_pages_table这个hot page最近有没有这个pf_offset的请求
+            if ((((uint64_t)1 << i) & u_vector)&& !l1d_requested_offset_current_pages_table(index, pf_offset)) 
+            {
+              if (PQ.occupancy < PQ.SIZE && bursts < L1D_MAX_NUM_BURST_PREFETCHES) 
+              {
+                //只要PQ.occupancy < PQ.SIZE,那么prefetched就会为真
+                bool prefetched = prefetch_line(ip, addr, pf_addr, FILL_L1, 0);
+                if (prefetched) 
+                {
+                  //assert(pf_page_addr == page_addr);
+                  l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
+                  bursts++;
+                }
+              } 
+              //如过发不完就记住当前的地址，下一次继续发
+              else 
+              { // record last burst
+                l1d_current_pages_table[l1d_cpu_id][index].last_burst = i;
+                break;
+              }
+            }
+          }
+	      } 
+        else if (berti < 0) 
+        {
+          for (int i = first_burst; i > ((int)offset)+berti; i--) 
+          {
+            if (i < 0) break; // Stay in the page
+            // Only if previously requested and not demanded
+            uint64_t pf_line_addr = (page_addr << L1D_PAGE_BLOCKS_BITS) | i;
+            uint64_t pf_addr = pf_line_addr << LOG2_BLOCK_SIZE;
+            uint64_t pf_page_addr = pf_line_addr >> L1D_PAGE_BLOCKS_BITS;
+            uint64_t pf_offset = pf_line_addr & L1D_PAGE_OFFSET_MASK;
+            if ((((uint64_t)1 << i) & u_vector)&& !l1d_requested_offset_current_pages_table(index, pf_offset)) 
+            {
+              if (PQ.occupancy < PQ.SIZE && bursts < L1D_MAX_NUM_BURST_PREFETCHES) 
+              {
+                bool prefetched = prefetch_line(ip, addr, pf_addr, FILL_L1, 0);
+                if (prefetched) 
+                {
+                  //assert(pf_page_addr == page_addr);
+                  l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
+                  bursts++;
+                }
+	            } 
+              else 
+              { // record last burst
+		            l1d_current_pages_table[l1d_cpu_id][index].last_burst = i;
+		            break;
+	            }
+	          }
+	        }
+	      } 
+        else 
+        { // berti == 0 (zig zag of all)
+	        for (int i = first_burst, j = (first_offset << 1) - i;
+	        i < L1D_PAGE_BLOCKS || j >= 0; i++, j = (first_offset << 1) - i) 
+          {
+            // Only if previously requested and not demanded
+            // Dir ++
+            uint64_t pf_line_addr = (page_addr << L1D_PAGE_BLOCKS_BITS) | i;
+            uint64_t pf_addr = pf_line_addr << LOG2_BLOCK_SIZE;
+            uint64_t pf_page_addr = pf_line_addr >> L1D_PAGE_BLOCKS_BITS;
+            uint64_t pf_offset = pf_line_addr & L1D_PAGE_OFFSET_MASK;
+	          if ((((uint64_t)1 << i) & u_vector)&& !l1d_requested_offset_current_pages_table(index, pf_offset)) 
+            {
+              if (PQ.occupancy < PQ.SIZE && bursts < L1D_MAX_NUM_BURST_PREFETCHES) 
+              {
+                bool prefetched = prefetch_line(ip, addr, pf_addr, FILL_L1, 0);
+                if (prefetched) 
+                {
+                  //assert(pf_page_addr == page_addr);
+                  l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
+                  bursts++;
+                }
+              } 
+              else 
+              { // record last burst
+		            l1d_current_pages_table[l1d_cpu_id][index].last_burst = i;
+		            break;
+	            }
+	          }
+            // Dir --
+            pf_line_addr = (page_addr << L1D_PAGE_BLOCKS_BITS) | j;
+            pf_addr = pf_line_addr << LOG2_BLOCK_SIZE;
+            pf_page_addr = pf_line_addr >> L1D_PAGE_BLOCKS_BITS;
+            pf_offset = pf_line_addr & L1D_PAGE_OFFSET_MASK;
+            if ((((uint64_t)1 << j) & u_vector)&& !l1d_requested_offset_current_pages_table(index, pf_offset)) 
+            {
+              if (PQ.occupancy < PQ.SIZE && bursts < L1D_MAX_NUM_BURST_PREFETCHES) 
+              {
+                bool prefetched = prefetch_line(ip, addr, pf_addr, FILL_L1, 0);
+                if (prefetched) 
+                {
+                  //assert(pf_page_addr == page_addr);
+                  l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
+                  bursts++;
+                }
+              } else 
+              {
+                // record only positive burst
+              }
+            }
+	        }
+	      }  
+      } 
+      else 
+      { // not recorded
       }	
     }
       
-    if (berti != 0) {
+    if (berti != 0) 
+    {
       uint64_t pf_line_addr = line_addr + berti;
       uint64_t pf_addr = pf_line_addr << LOG2_BLOCK_SIZE;
       uint64_t pf_page_addr = pf_line_addr >> L1D_PAGE_BLOCKS_BITS;
       uint64_t pf_offset = pf_line_addr & L1D_PAGE_OFFSET_MASK;
       if (!l1d_requested_offset_current_pages_table(index, pf_offset) // Only prefetch if not demanded
-	  && (!match_confidence || (((uint64_t)1 << pf_offset) & u_vector))) { // And prev. accessed
-	bool prefetched = prefetch_line(ip, addr, pf_addr, FILL_L1, 0);
-	if (prefetched) {
-	  assert(pf_page_addr == page_addr);
-	  l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
-	}
+	      && (!match_confidence || (((uint64_t)1 << pf_offset) & u_vector))) 
+      { // And prev. accessed
+	      bool prefetched = prefetch_line(ip, addr, pf_addr, FILL_L1, 0);
+	      if (prefetched) 
+        {
+          //assert(pf_page_addr == page_addr);
+          l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
+	      }
       }
     }
   }
