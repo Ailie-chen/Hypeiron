@@ -17,7 +17,7 @@
 //******预取器开关*********//
 #define BERTI_IP_ON
 //#define BERTI_PAGES_ON
-#define BERTI_PP_ON
+//#define BERTI_PP_ON
 //#define BINGO_BOP_ON
 //#define BINGO
 //#define MLOP_ON
@@ -4660,28 +4660,30 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
       } 
     #endif
 
-    #ifdef BERTI_IP_ON 
-      ip = ((ip >> 1) ^ (ip >> 4));
-      //ip = (ip >> 1) ^ (ip >> 4) ^ (ip >> 8);
-      ip = ip & IP_MASK;
-      // Get stride to prefetch
-      stride_t stride[MAX_PF];
-      for (int i = 0; i < MAX_PF; i++) 
-      {
-          stride[i].conf = 0;
-          stride[i].stride = 0;
-          stride[i].rpl = R;
-      }
+    #ifdef BERTI_IP_ON
+        #ifdef BERTI_PP_ON
+            ip = ((ip >> 1) ^ (ip >> 4));
+            //ip = (ip >> 1) ^ (ip >> 4) ^ (ip >> 8);
+            ip = ip & IP_MASK;
+            // Get stride to prefetch
+        #endif
+        stride_t stride[MAX_PF];
+        for (int i = 0; i < MAX_PF; i++) 
+        {
+            stride[i].conf = 0;
+            stride[i].stride = 0;
+            stride[i].rpl = R;
+        }
 
-      //******************IP prefetch**************
-      if(RECORD_IP_ADDR)
-      {
-          std::cout << "PC is:"<< pc << " IP is: "<< ip <<" ADDR is:"<< addr << std::endl;
-          std::cout << "IP hex is:"<< std::hex << ip <<" Line ADDR is:"<< std::hex << line_addr << std::dec << std::endl;
-          std::cout << "Pages Addr is:"<< std::hex << ((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE) << std::dec << std::endl;
-      }
-      int launched_ip = 0;
-        if (prefetch_line(ip, addr, (line_addr + 1) << LOG2_BLOCK_SIZE, FILL_L1, 1))
+        //******************IP prefetch**************
+        if(RECORD_IP_ADDR)
+        {
+            std::cout << "PC is:"<< pc << " IP is: "<< ip <<" ADDR is:"<< addr << std::endl;
+            std::cout << "IP hex is:"<< std::hex << ip <<" Line ADDR is:"<< std::hex << line_addr << std::dec << std::endl;
+            std::cout << "Pages Addr is:"<< std::hex << ((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE) << std::dec << std::endl;
+        }
+        int launched_ip = 0;
+        //prefetch_line(ip, addr, (line_addr + 1) << LOG2_BLOCK_SIZE, FILL_L1, 1);
         if(!vberti_table_get(ip, cpu, stride))
         {
             #ifdef BERTI_IP_TABLE_DEBUG
@@ -4778,6 +4780,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
         }
     #endif  
     
+    //std::cout << float(PQ.occupancy) << " " << float(MSHR.occupancy) << std::endl;
 
     #ifdef BINGO
         if(warmup_complete[cpu] && warmup_flag_l1 == 0)
