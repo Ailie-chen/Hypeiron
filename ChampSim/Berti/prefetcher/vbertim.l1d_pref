@@ -17,11 +17,38 @@
 //******预取器开关*********//
 #define BERTI_IP_ON
 //#define BERTI_PAGES_ON
-//#define BERTI_PP_ON
-//#define BINGO_BOP_ON
+#define BERTI_PP_ON
+#define BINGO_BOP_ON
 //#define BINGO
 //#define MLOP_ON
+#define MIX_DELTA
 
+#ifdef MIX_DELTA
+
+
+    void mergeDelta(std::vector<mix_delta> &data, const mix_delta &newElement) 
+    {
+        for (mix_delta &elem : data) 
+        {
+            if (elem.pf_addr == newElement.pf_addr) 
+            {
+                elem.score += newElement.score;
+                elem.prefetcher.push_back(newElement.prefetcher[0]);
+                if(elem.fill_level > newElement.fill_level )
+                {
+                    elem.fill_level = newElement.fill_level;
+                }
+                return;
+            }
+        }
+        data.push_back(newElement);
+    }
+
+    bool compare_delta_scores(const mix_delta &a, const mix_delta &b) 
+    {
+        return a.score > b.score;
+    }
+#endif
 
 //#define BOP_ON
 #ifdef BINGO_BOP_ON
@@ -3823,6 +3850,7 @@
                 // Substitue min confidence for the next one
                 res[dx].stride = aux[i].stride;
                 res[dx].rpl = aux[i].rpl;
+                res[dx].conf = aux[i].conf;
                 dx++;
             }
         }
@@ -4140,6 +4168,7 @@ void CACHE::l1d_prefetcher_initialize()
             vector<L1D_PREF_2::MLOP>(NUM_CPUS, L1D_PREF_2::MLOP(BLOCKS_IN_ZONE, AMT_SIZE, PREFETCH_DEGREE, NUM_UPDATES,
                                                 L1D_THRESH, L2C_THRESH, LLC_THRESH, L1D_PREF_2::DEBUG_LEVEL));
     #endif
+    
 }
 
 #ifdef MEMORY_ACCESS_PATTERN_DEBUG
@@ -4153,15 +4182,14 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
     #ifdef MEMORY_ACCESS_PATTERN_DEBUG
         bool trigger_miss = false;
     #endif
-    #ifdef BOP_DEBUG
-        mtx.lock();
-    #endif
     //assert(type == LOAD || type == RFO);  
     uint64_t line_addr = (addr >> LOG2_BLOCK_SIZE); // Line addr  
     uint64_t pc = ip;
     ip = ((ip >> 1) ^ (ip >> 4));
     //ip = (ip >> 1) ^ (ip >> 4) ^ (ip >> 8);
     ip = ip & IP_MASK;
+
+    
 
     #ifdef BINGO_BOP_ON
         bool bingo_bop_triger = false;      
@@ -4174,6 +4202,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
             std::cout << "pc:"<<pc <<" "<<"ip:"<<ip<<" ";
             std::cout << "offset:"<<(line_addr%(1<<LOG2_BLOCKS_PER_PAGE))<<" ";
             std::cout << "baddr:"<< line_addr<<" ";
+            std::cout << "vpaddr:"<< (line_addr >> LOG2_BLOCKS_PER_PAGE)<<" ";
 
         }
     #endif
@@ -4532,16 +4561,24 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                 //l1d_requested_offset_current_pages_table这个hot page最近有没有这个pf_offset的请求
                 if ((((uint64_t)1 << i) & u_vector)&& !l1d_requested_offset_current_pages_table(index, pf_offset)) 
                 {
-                  if (PQ.occupancy < PQ.SIZE && bursts < L1D_MAX_NUM_BURST_PREFETCHES) 
+                  if ((PQ.occupancy + mix_deltas.size())< PQ.SIZE && bursts < L1D_MAX_NUM_BURST_PREFETCHES) 
                   {
                     //只要PQ.occupancy < PQ.SIZE,那么prefetched就会为真
-                    bool prefetched = prefetch_line(ip, addr, pf_addr, FILL_L1, 0);
-                    if (prefetched) 
-                    {
-                      assert(pf_page_addr == page_addr);
-                      l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
-                      bursts++;
-                    }
+                    #ifdef MIX_DELTA
+                        mix_delta new_delta = {pf_addr,ip,FILL_L1,{0},index,8};
+                        mergeDelta(mix_deltas,new_delta);
+                        bursts++;
+                        //std::cout << "PP: " << ip<<" "<<addr<<" "<<pf_addr<<" "<<std::endl;
+                    #else
+                        bool prefetched = prefetch_line(ip, addr, pf_addr, FILL_L1, 0);
+                        if (prefetched) 
+                        {
+                        assert(pf_page_addr == page_addr);
+                        l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
+                        bursts++;
+                        }
+                    #endif
+                    
                   } 
                   //如过发不完就记住当前的地址，下一次继续发
                   else 
@@ -4564,15 +4601,23 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                 uint64_t pf_offset = pf_line_addr & L1D_PAGE_OFFSET_MASK;
                 if ((((uint64_t)1 << i) & u_vector)&& !l1d_requested_offset_current_pages_table(index, pf_offset)) 
                 {
-                  if (PQ.occupancy < PQ.SIZE && bursts < L1D_MAX_NUM_BURST_PREFETCHES) 
+                  if ((PQ.occupancy + mix_deltas.size()) && bursts < L1D_MAX_NUM_BURST_PREFETCHES) 
                   {
-                    bool prefetched = prefetch_line(ip, addr, pf_addr, FILL_L1, 0);
-                    if (prefetched) 
-                    {
-                      assert(pf_page_addr == page_addr);
-                      l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
-                      bursts++;
-                    }
+                    #ifdef MIX_DELTA
+                        mix_delta new_delta = {pf_addr,ip,FILL_L1,{0},index,8};
+                        mergeDelta(mix_deltas,new_delta);
+                        bursts++;
+                        //std::cout << "PP: " << ip<<" "<<addr<<" "<<pf_addr<<" "<<std::endl;
+                    #else
+                        bool prefetched = prefetch_line(ip, addr, pf_addr, FILL_L1, 0);
+                        if (prefetched) 
+                        {
+                        assert(pf_page_addr == page_addr);
+                        l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
+                        bursts++;
+                        }
+                    #endif
+                    
                   } 
                   else 
                   { // record last burst
@@ -4595,15 +4640,23 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                 uint64_t pf_offset = pf_line_addr & L1D_PAGE_OFFSET_MASK;
                 if ((((uint64_t)1 << i) & u_vector)&& !l1d_requested_offset_current_pages_table(index, pf_offset) && (i < L1D_PAGE_BLOCKS)) 
                 {
-                  if (PQ.occupancy < PQ.SIZE && bursts < L1D_MAX_NUM_BURST_PREFETCHES) 
+                  if ((PQ.occupancy + mix_deltas.size()) && bursts < L1D_MAX_NUM_BURST_PREFETCHES) 
                   {
-                    bool prefetched = prefetch_line(ip, addr, pf_addr, FILL_L1, 0);
-                    if (prefetched) 
-                    {
-                      assert(pf_page_addr == page_addr);
-                      l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
-                      bursts++;
-                    }
+                    #ifdef MIX_DELTA
+                        mix_delta new_delta = {pf_addr,ip,FILL_L1,{0},index,8};
+                        mergeDelta(mix_deltas,new_delta);
+                        bursts++;
+                        //std::cout << "PP: " << ip<<" "<<addr<<" "<<pf_addr<<" "<<std::endl;
+                    #else
+                        bool prefetched = prefetch_line(ip, addr, pf_addr, FILL_L1, 0);
+                        if (prefetched) 
+                        {
+                        assert(pf_page_addr == page_addr);
+                        l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
+                        bursts++;
+                        }
+                    #endif
+                    
                   } 
                   else 
                   { // record last burst
@@ -4618,15 +4671,23 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                 pf_offset = pf_line_addr & L1D_PAGE_OFFSET_MASK;
                 if ((((uint64_t)1 << j) & u_vector)&& !l1d_requested_offset_current_pages_table(index, pf_offset)&&(j>0)&&(j<L1D_PAGE_BLOCKS)) 
                 {
-                  if (PQ.occupancy < PQ.SIZE && bursts < L1D_MAX_NUM_BURST_PREFETCHES) 
+                  if ((PQ.occupancy + mix_deltas.size()) && bursts < L1D_MAX_NUM_BURST_PREFETCHES) 
                   {
-                    bool prefetched = prefetch_line(ip, addr, pf_addr, FILL_L1, 0);
-                    if (prefetched) 
-                    {
-                      assert(pf_page_addr == page_addr);
-                      l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
-                      bursts++;
-                    }
+                    #ifdef MIX_DELTA
+                        mix_delta new_delta = {pf_addr,ip,FILL_L1,{0},index,8};
+                        mergeDelta(mix_deltas,new_delta);
+                        bursts++;
+                        //std::cout << "PP: " << ip<<" "<<addr<<" "<<pf_addr<<" "<<std::endl;
+                    #else
+                        bool prefetched = prefetch_line(ip, addr, pf_addr, FILL_L1, 0);
+                        if (prefetched) 
+                        {
+                        assert(pf_page_addr == page_addr);
+                        l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
+                        bursts++;
+                        }
+                    #endif
+                    
                   } else 
                   {
                     // record only positive burst
@@ -4649,12 +4710,19 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
           if (!l1d_requested_offset_current_pages_table(index, pf_offset) // Only prefetch if not demanded
             && (!match_confidence || (((uint64_t)1 << pf_offset) & u_vector))&&(pf_page_addr == page_addr)) 
           { // And prev. accessed
-            bool prefetched = prefetch_line(ip, addr, pf_addr, FILL_L1, 0);
-            if (prefetched) 
-            {
-              assert(pf_page_addr == page_addr);
-              l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
-            }
+            #ifdef MIX_DELTA
+                mix_delta new_delta = {pf_addr,ip,FILL_L1,{1},index,8};
+                mergeDelta(mix_deltas,new_delta);
+                //std::cout << "PP: " << ip<<" "<<addr<<" "<<pf_addr<<" "<<std::endl;
+            #else
+                bool prefetched = prefetch_line(ip, addr, pf_addr, FILL_L1, 0);
+                if (prefetched) 
+                {
+                assert(pf_page_addr == page_addr);
+                l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
+                }
+            #endif
+            
           }
         }
       } 
@@ -4683,15 +4751,15 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
             std::cout << "Pages Addr is:"<< std::hex << ((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE) << std::dec << std::endl;
         }
         int launched_ip = 0;
-        //prefetch_line(ip, addr, (line_addr + 1) << LOG2_BLOCK_SIZE, FILL_L1, 1);
+        #ifdef MIX_DELTA
+            mix_delta new_delta = {((line_addr + 1) << LOG2_BLOCK_SIZE),ip,FILL_L1,{2},0,9};
+            mergeDelta(mix_deltas,new_delta);
+            //std::cout << "IP: " << ip<<" "<<addr<<" "<<((line_addr + 1) << LOG2_BLOCK_SIZE)<<" "<<std::endl;
+        #else
+            bool prefetched = prefetch_line(ip, addr, (line_addr + 1) << LOG2_BLOCK_SIZE, FILL_L1, 1);
+        #endif
         if(!vberti_table_get(ip, cpu, stride))
         {
-            #ifdef BERTI_IP_TABLE_DEBUG
-            if(warmup_complete[cpu] == 1)
-            {
-                std::cout << "no" << std::endl;
-            }
-            #endif
         }
         else
         {
@@ -4701,11 +4769,11 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
 
                 uint64_t p_addr = (line_addr + stride[i].stride) << LOG2_BLOCK_SIZE;
                 uint64_t p_b_addr = (p_addr >> LOG2_BLOCK_SIZE);
-
+                
                 //if (!shadow_cache_get(cpu, p_b_addr)
                 if (!latency_table_get(p_addr, cpu))
                 {
-
+                    
                     int fill_level = FILL_L1;
                     float mshr_load = ((float) MSHR.occupancy / (float) MSHR_SIZE) * 100;
                     #ifdef BOP_DEBUG
@@ -4719,10 +4787,13 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                             std::cout << stride[i].stride << " ";
                         #endif                  
                         fill_level = FILL_L1;
-                        #ifdef BERTI_IP_TABLE_DEBUG
-                            if(warmup_complete[cpu] == 1)
+                        
+                        #ifdef MIX_DELTA
+                            if(stride[i].stride != 0)
                             {
-                                std::cout <<"["<< stride[i].stride << " " << "L1"<<" "<<p_b_addr<<"]" <<" ";
+                                mix_delta new_delta = {p_addr, ip,fill_level,{3},0,stride[i].conf};
+                                mergeDelta(mix_deltas,new_delta);
+                                //std::cout << "IP: " << ip<<" "<<addr<<" "<<p_addr<<" "<<std::endl;
                             }
                         #endif
                     } else if (stride[i].rpl == L1 || stride[i].rpl == L2 
@@ -4731,10 +4802,12 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                             std::cout << stride[i].stride << " ";
                         #endif                   
                         fill_level = FILL_L2;
-                        #ifdef BERTI_IP_TABLE_DEBUG
-                            if(warmup_complete[cpu] == 1)
+                        #ifdef MIX_DELTA
+                            if(stride[i].stride != 0)
                             {
-                                std::cout<<"[" << stride[i].stride << " " << "L2"<<" "<<p_b_addr <<"]" <<" ";
+                                mix_delta new_delta = {p_addr, ip,fill_level,{3},0,stride[i].conf};
+                                mergeDelta(mix_deltas,new_delta);
+                                //std::cout << "IP: " << ip<<" "<<addr<<" "<<p_addr<<" "<<std::endl;
                             }
                         #endif
                     } else
@@ -4743,42 +4816,138 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                         break;
                     }
                     
-                    //0b01:IP
-                    #ifdef PREFETCHER_CLASS_DEBUG
-                    uint32_t pf_metadata_encode_ip = metadata_encode(1,0b01);
-                        if (prefetch_line(ip, addr, p_addr, fill_level, pf_metadata_encode_ip))
+                    
+                    #ifdef  MIX_DELTA
                     #else
-                        if (prefetch_line(ip, addr, p_addr, fill_level,1))
-                    #endif
-                    {
-                        launched_ip++;
-                    }
-                }
-                #ifdef BERTI_IP_TABLE_DEBUG
-                    if(count == 6){
-                        count = 0;
-                        if(warmup_complete[cpu] == 1)
+                        //0b01:IP
+                        #ifdef PREFETCHER_CLASS_DEBUG
+                        uint32_t pf_metadata_encode_ip = metadata_encode(1,0b01);
+                            if (prefetch_line(ip, addr, p_addr, fill_level, pf_metadata_encode_ip))
+                        #else
+                            if (prefetch_line(ip, addr, p_addr, fill_level,1))
+                        #endif
                         {
-                            std::cout << endl;
+                            launched_ip++;
                         }
-                    }
-                    count++;
-                #endif
-            }
-            #ifdef BERTI_IP_TABLE_DEBUG
-                if(warmup_complete[cpu] == 1)
-                {
-                    std::cout<<std::endl;
+                    #endif
                 }
-            #endif
-            #ifdef RECORD_DELTAS
-                std::cout << endl;
-            #endif
+            }
             #ifdef BOP_DEBUG
                 std::cout << "IP NUMS: "<< launched_ip <<std::endl;
             #endif
         }
     #endif  
+
+    #ifdef BINGO_BOP_ON
+        int launched_bop = 0;
+            if(bingo_bop_triger == true)
+            {
+                /* call prefetcher and send prefetches */
+                //prefetchers是BOP类的一个数组，在CACHE初始化的时候同时进行初始化
+                vector<uint64_t> to_prefetch = prefetchers[cpu].access(line_addr);
+                for (auto &pf_block_number : to_prefetch) {
+                    uint64_t pf_address = pf_block_number << LOG2_BLOCK_SIZE;
+                    #ifdef MIX_DELTA
+                        mix_delta new_delta = {pf_address, ip,FILL_L1,{4},0,1};
+                        mergeDelta(mix_deltas,new_delta);
+                    #else
+                        prefetch_line(ip, addr, pf_address, FILL_L1,1);
+                    #endif
+                    // /* champsim automatically ignores prefetches that cross page boundaries */
+                    // float mshr_load = ((float) MSHR.occupancy / (float) MSHR_SIZE) * 100;
+                    // #ifdef BOP_DEBUG
+                    //     std::cout << "BOP L1 " << "MSHR: " << mshr_load <<std::endl;
+                    // #endif
+                    // //0b11:bop
+                    // #ifdef PREFETCHER_CLASS_DEBUG
+                    // uint32_t pf_metadata_encode_bop = metadata_encode(1,0b11);
+                    // #endif
+                    // if (!latency_table_get(pf_address, cpu)){
+                        
+                    //     if((mshr_load < (MSHR_LIMIT + 10)) && ((launched_ip + launched_pages)< MAX_PF_LAUNCH))
+                    //     {   
+                    //         #ifdef PREFETCHER_CLASS_DEBUG
+                    //         prefetch_line(ip, addr, pf_address, FILL_L1,pf_metadata_encode_bop);
+                    //         #else
+                    //         prefetch_line(ip, addr, pf_address, FILL_L1,1);
+                    //         #endif
+                    //     }
+                    //     else
+                    //     {
+                    //         #ifdef PREFETCHER_CLASS_DEBUG
+                    //         prefetch_line(ip, addr, pf_address, FILL_L1,pf_metadata_encode_bop);
+                    //         #else
+                    //         prefetch_line(ip, addr, pf_address, FILL_L1,1);
+                    //         #endif
+                    //     }
+                    //     launched_bop++;
+                    // }               
+                }
+            }
+            #ifdef BOP_DEBUG
+                std::cout << "BOP NUMS " << launched_bop <<std::endl;
+            #endif
+    #endif
+    #ifdef MIX_DELTA
+        // std::cout << mix_deltas.size() <<std::endl;
+        std::sort(mix_deltas.begin(), mix_deltas.end(), compare_delta_scores);
+        int count = 0;
+        int fill_level = 0;
+        for (const mix_delta &elem : mix_deltas) 
+        {
+            int64_t delta = int64_t((elem.pf_addr)>>LOG2_BLOCK_SIZE)- int64_t(line_addr);
+            // std::cout <<elem.ip<<" "<<addr <<" "<<elem.pf_addr<<" ";
+            // std::cout <<elem.fill_level<<" "<<elem.prefetcher<<" ";
+            // std::cout <<elem.berti_pp_index<<" " << elem.score<<std::endl;
+            switch(elem.fill_level)
+            {
+                case(R):{fill_level = 0; break;}
+                case(L1):{fill_level = 1; break;}
+                case(L2):{fill_level = 2; break;}
+                case(L2R):{fill_level = 3; break;}
+            }
+            if( (std::find(elem.prefetcher.begin(), elem.prefetcher.end(), 0) != elem.prefetcher.end()) || (std::find(elem.prefetcher.begin(), elem.prefetcher.end(), 1) != elem.prefetcher.end()))
+            {   
+                bool prefetched = prefetch_line(elem.ip, addr, elem.pf_addr, elem.fill_level, 0);
+                if(prefetched)
+                {
+                    l1d_add_prev_prefetches_table(elem.berti_pp_index, ((elem.pf_addr)>>LOG2_BLOCK_SIZE)&L1D_PAGE_OFFSET_MASK, current_core_cycle[cpu]);
+                }              
+            }
+            else
+            {
+                bool prefetched = prefetch_line(elem.ip, addr, elem.pf_addr, elem.fill_level, 1);
+            }
+            #ifdef BERTI_IP_TABLE_DEBUG           
+                if(warmup_complete[cpu] == 1)
+                {
+                    count++;
+                    std::cout <<"["<< delta << " "<<((elem.pf_addr)>>LOG2_BLOCK_SIZE) << " "<<fill_level<<" {";
+                    for(int pref: elem.prefetcher)
+                    {
+                        std::cout<<pref << " ";
+                    }
+                    std::cout<<"}" <<"]";
+                    if(count == 6)
+                    {
+                        count = 0;
+                        std::cout << std::endl;
+                    }
+                }
+            #endif
+        }
+        // std::cout << "round_end" <<std::endl;
+        mix_deltas.clear();
+        #ifdef BERTI_IP_TABLE_DEBUG
+            if(warmup_complete[cpu]==1)
+            {
+                if(count!=0)
+                {
+                    std::cout << std::endl;
+                }
+            }
+        #endif
+    #endif
     
     //std::cout << float(PQ.occupancy) << " " << float(MSHR.occupancy) << std::endl;
 
@@ -4905,51 +5074,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
         }
     #endif
 
-    #ifdef BINGO_BOP_ON
-        int launched_bop = 0;
-            if(bingo_bop_triger == true)
-            {
-                /* call prefetcher and send prefetches */
-                //prefetchers是BOP类的一个数组，在CACHE初始化的时候同时进行初始化
-                vector<uint64_t> to_prefetch = prefetchers[cpu].access(line_addr);
-                for (auto &pf_block_number : to_prefetch) {
-                    uint64_t pf_address = pf_block_number << LOG2_BLOCK_SIZE;
-                    prefetch_line(ip, addr, pf_address, FILL_L1,1);
-                    // /* champsim automatically ignores prefetches that cross page boundaries */
-                    // float mshr_load = ((float) MSHR.occupancy / (float) MSHR_SIZE) * 100;
-                    // #ifdef BOP_DEBUG
-                    //     std::cout << "BOP L1 " << "MSHR: " << mshr_load <<std::endl;
-                    // #endif
-                    // //0b11:bop
-                    // #ifdef PREFETCHER_CLASS_DEBUG
-                    // uint32_t pf_metadata_encode_bop = metadata_encode(1,0b11);
-                    // #endif
-                    // if (!latency_table_get(pf_address, cpu)){
-                        
-                    //     if((mshr_load < (MSHR_LIMIT + 10)) && ((launched_ip + launched_pages)< MAX_PF_LAUNCH))
-                    //     {   
-                    //         #ifdef PREFETCHER_CLASS_DEBUG
-                    //         prefetch_line(ip, addr, pf_address, FILL_L1,pf_metadata_encode_bop);
-                    //         #else
-                    //         prefetch_line(ip, addr, pf_address, FILL_L1,1);
-                    //         #endif
-                    //     }
-                    //     else
-                    //     {
-                    //         #ifdef PREFETCHER_CLASS_DEBUG
-                    //         prefetch_line(ip, addr, pf_address, FILL_L1,pf_metadata_encode_bop);
-                    //         #else
-                    //         prefetch_line(ip, addr, pf_address, FILL_L1,1);
-                    //         #endif
-                    //     }
-                    //     launched_bop++;
-                    // }               
-                }
-            }
-            #ifdef BOP_DEBUG
-                std::cout << "BOP NUMS " << launched_bop <<std::endl;
-            #endif
-    #endif
+    
 
 
     #ifdef MLOP_ON

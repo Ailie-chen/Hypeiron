@@ -198,3 +198,17 @@ uint32_t metadata_encode(uint32_t metadata_origin, uint32_t prefetcher_type);
     void print_history_table(uint32_t cpu);
     void print_stride_table(uint32_t cpu);
 #endif
+
+
+typedef struct mix_delta_struct
+{
+    uint64_t pf_addr;
+    uint64_t ip;
+    int fill_level;
+    std::vector<int> prefetcher;//0:berti_pp_cold, 1:berti_pp_hot,2:nextline, 3:berti_ip,4:bop
+    uint64_t berti_pp_index;
+    uint64_t score;
+} mix_delta;
+std::vector<mix_delta> mix_deltas;
+void mergeDelta(std::vector<mix_delta> &data, const mix_delta &newElement);
+bool compare_delta_scores(const mix_delta &a, const mix_delta &b);
