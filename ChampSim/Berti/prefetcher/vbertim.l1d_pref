@@ -15,13 +15,14 @@
 
 
 //******预取器开关*********//
-#define BERTI_IP_ON
+//#define BERTI_IP_ON
+//#define NEXT_LINE_ON
 //#define BERTI_PAGES_ON
 #define BERTI_PP_ON
-#define BINGO_BOP_ON
+//#define BINGO_BOP_ON
 //#define BINGO
 //#define MLOP_ON
-#define MIX_DELTA
+//#define MIX_DELTA
 
 #ifdef MIX_DELTA
 
@@ -4285,6 +4286,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
             shadow_cache_pf(cpu, line_addr);
             // No pf in hit
             //return;
+            //history_table_add(ip, cpu, line_addr);
         }
     #endif
 
@@ -4751,12 +4753,14 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
             std::cout << "Pages Addr is:"<< std::hex << ((line_addr&ADDR_MASK)>>LOG2_BLOCKS_PER_PAGE) << std::dec << std::endl;
         }
         int launched_ip = 0;
-        #ifdef MIX_DELTA
-            mix_delta new_delta = {((line_addr + 1) << LOG2_BLOCK_SIZE),ip,FILL_L1,{2},0,9};
-            mergeDelta(mix_deltas,new_delta);
-            //std::cout << "IP: " << ip<<" "<<addr<<" "<<((line_addr + 1) << LOG2_BLOCK_SIZE)<<" "<<std::endl;
-        #else
-            bool prefetched = prefetch_line(ip, addr, (line_addr + 1) << LOG2_BLOCK_SIZE, FILL_L1, 1);
+        #ifdef NEXT_LINE_ON
+            #ifdef MIX_DELTA
+                mix_delta new_delta = {((line_addr + 1) << LOG2_BLOCK_SIZE),ip,FILL_L1,{2},0,9};
+                mergeDelta(mix_deltas,new_delta);
+                //std::cout << "IP: " << ip<<" "<<addr<<" "<<((line_addr + 1) << LOG2_BLOCK_SIZE)<<" "<<std::endl;
+            #else
+                bool prefetched = prefetch_line(ip, addr, (line_addr + 1) << LOG2_BLOCK_SIZE, FILL_L1, 1);
+            #endif
         #endif
         if(!vberti_table_get(ip, cpu, stride))
         {
