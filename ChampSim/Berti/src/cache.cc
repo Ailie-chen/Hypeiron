@@ -2791,10 +2791,10 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                                             if (PQ.entry[index].fill_level <= fill_level)
                                                 add_nonfifo_queue(&MSHR, &new_packet); //@Vishal: Updated from add_mshr
                                             // INIT AGUS: notify to L1D cache
-                                            // if (PQ.entry[index].fill_level == FILL_L1)
-                                            // {
-                                            //     notify_prefetch(PQ.entry[index].address, PQ.entry[index].ip, cpu, PQ.entry[index].cycle_enqueued);
-                                            // }
+                                            if (PQ.entry[index].fill_level == FILL_L1)
+                                            {
+                                                notify_prefetch(PQ.entry[index].address, PQ.entry[index].ip, cpu, PQ.entry[index].cycle_enqueued);
+                                            }
                                             //END AGUS
                                             lower_level->add_pq(&new_packet);
                                         }

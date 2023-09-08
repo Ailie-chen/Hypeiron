@@ -90,7 +90,7 @@ def parse_file(file: str) -> Tuple[str, str, int, Dict[str, Any]]:
     if not match_prefetcher:
         print("no match_prefetcher");
         return '', '', -1, {}
-    match_trace = re.search(r'---(.+)(\.champsimtrace\.xz|\.trace\.gz)', file)
+    match_trace = re.search(r'---(.+)(\.champsimtrace\.xz|\.trace\.gz|\.trace\.xz)', file)
     
     if not match_trace:
         print("no match_trace");
@@ -112,11 +112,12 @@ def parse_file(file: str) -> Tuple[str, str, int, Dict[str, Any]]:
     #还没开始提取文本文件中的数据，首先加入每一个的trace和prefetcher空条目
     entry=add_entry(ROI_ORIGIN_STATS,trace, prefetcher)
     cpu=-1
-    with open(file, mode='r') as f:
+
+    #在读取cs时由于UNIQUE_ASID[0] = �这里会错误，所以需要加上, errors='ignore'
+    with open(file, mode='r', errors='ignore') as f:
         current_cpu = -1
         for line in f.readlines():
             line = line.strip()
-            
             regex = re.search(r'CPU ([0-3]) cumulative IPC: (.*) instructions: (.*) c', line)
             if regex:
                 cpu = int(regex.group(1))

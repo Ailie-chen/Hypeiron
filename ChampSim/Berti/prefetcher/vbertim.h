@@ -185,7 +185,7 @@ void bop_deltas_table_init(uint32_t cpu);
 
 //为BINGO_BOP进行定义
 # define RR_TABLE_SIZE  (256)
-# define DEGREE         (32)
+# define DEGREE         (1)
 
 #ifdef PREFETCHER_CLASS_DEBUG
 //对应的decode版本定义在cache.cc和cache.h中
