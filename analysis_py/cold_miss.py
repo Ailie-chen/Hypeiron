@@ -10,10 +10,10 @@ pref_pattern = r'(\d+) (\d+) (\d+)'
 #r'\[(\d+) \d+ \d+ \{(\d+) \} P\]'
 
 # 获取输入文件夹路径
-input_dir = 'outputsum/output0902/spec2k17'
+input_dir = 'outputsum/output0912/spec2k17'
 
 # 获取输出文件夹路径pu
-output_dir = 'outputsum/output0902/spec2k17_ana'
+output_dir = 'outputsum/output0912/spec2k17_ana'
 
 # 确保输出文件夹存在
 os.makedirs(output_dir, exist_ok=True)

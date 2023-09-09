@@ -10,7 +10,7 @@ if not os.path.exists(save_path):
  # 如果目录不存在，则创建该目录
     os.makedirs(save_path)
 traces = ['spec2k17']
-dates = ['0703','0825','0908']
+dates = ['0703','0901','0918','0914','0919']
 #dates = ['0703','0704',]
 #metrics = ['IPC','IPCI','L1D Accuracy','L1D Coverage']
 metrics = ['IPC','IPCI','L1D LOAD_ACCURACY','L1D MPKI','L1D Overprediction','L1D traffic']
@@ -37,7 +37,11 @@ dic = dict([ ('vberti', 'IP'),
         ('0903', 'Berti_pp+berti_ip+bop'),
         ('0904', 'Berti_pp+nextline+berti_ip+bop'),
         ('0908', 'Berti_pp(lose_page)'),
-        ('0909', 'Berti_pp(lose_ip)')
+        ('0909', 'Berti_pp(lose_ip)'),
+        ('0914', 'Berti_pp+nextline+berti_ip+bop(2)'),
+        ('0917', 'Berti_PP(D3)'),
+        ('0918', 'Berti_PP(D3)+nextline+Berti(mix)'),
+        ('0919', 'Berti_PP(D3)+nextline+berti_ip+bop(2)')
 
 ])
 

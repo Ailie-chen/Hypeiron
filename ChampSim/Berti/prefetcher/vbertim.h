@@ -1,7 +1,7 @@
 #ifndef VBERTI_H_
 #define VBERTI_H_
 
-//#define BERTI_IP_TABLE_DEBUG
+#define BERTI_IP_TABLE_DEBUG
 
 #include "vberti_size.h"
 
@@ -185,7 +185,7 @@ void bop_deltas_table_init(uint32_t cpu);
 
 //为BINGO_BOP进行定义
 # define RR_TABLE_SIZE  (256)
-# define DEGREE         (1)
+# define DEGREE         (2)
 
 #ifdef PREFETCHER_CLASS_DEBUG
 //对应的decode版本定义在cache.cc和cache.h中
@@ -208,6 +208,7 @@ typedef struct mix_delta_struct
     std::vector<int> prefetcher;//0:berti_pp_cold, 1:berti_pp_hot,2:nextline, 3:berti_ip,4:bop
     uint64_t berti_pp_index;
     uint64_t score;
+    std::vector<uint64_t> scores;
 } mix_delta;
 std::vector<mix_delta> mix_deltas;
 void mergeDelta(std::vector<mix_delta> &data, const mix_delta &newElement);
