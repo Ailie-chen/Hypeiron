@@ -12,14 +12,15 @@
 #define RECORD_IP_ADDR false
 //#define RECORD_DELTAS
 #define LANZAR_INT 8
-
+//#define PP_TYPE
 
 //******预取器开关*********//
 #define BERTI_IP_ON 
-#define NEXT_LINE_ON
+//#define NEXT_LINE_ON
 //#define LAST_LINE_ON
 //#define BERTI_PAGES_ON
 #define BERTI_PP_ON 
+//#define GLOBAL_DELTA
 //#define BINGO_BOP_ON
 //#define BINGO
 //#define MLOP_ON
@@ -33,10 +34,20 @@
         for (mix_delta &elem : data) 
         {
             if (elem.pf_addr == newElement.pf_addr) 
-            {
+             {   
+            //    if(newElement.prefetcher[0] == 1)
+            //     {
+            //         elem.score += int(float(newElement.score)*0.16);
+            //         elem.scores.push_back(newElement.scores[0]);
+            //     }
+            //     else
+            //     {
+            //         elem.score += newElement.score;
+            //         elem.scores.push_back(newElement.scores[0]);
+            //     } 
                 elem.score += newElement.score;
-                elem.prefetcher.push_back(newElement.prefetcher[0]);
-                elem.scores.push_back(newElement.scores[0]);
+                elem.scores.push_back(newElement.scores[0]);              
+                elem.prefetcher.push_back(newElement.prefetcher[0]);                
                 if(elem.fill_level > newElement.fill_level )
                 {
                     elem.fill_level = newElement.fill_level;
@@ -50,6 +61,79 @@
     bool compare_delta_scores(const mix_delta &a, const mix_delta &b) 
     {
         return a.score > b.score;
+    }
+#endif
+
+#ifdef GLOBAL_DELTA
+    #define GLOBAL_DELTA_NUM 16
+    uint64_t last_baddr;
+    typedef struct _gloabl_delta_entry
+    {
+        int64_t delta;
+        uint64_t score;
+        uint64_t lru;
+    } global_delta_entry;
+    global_delta_entry global_deltas[GLOBAL_DELTA_NUM ];
+    uint64_t global_deltas_sum;
+    void global_delta_init()
+    {
+        for(int i = 0 ; i < GLOBAL_DELTA_NUM ; i++)
+        {
+            global_deltas[i].lru = i;
+        }
+    }
+    int64_t get_global_delta()
+    {
+        for(int i = 0 ; i < GLOBAL_DELTA_NUM ; i++)
+        {
+            if((float(global_deltas[i].score) / global_deltas_sum) > 0.3)
+            {
+                return global_deltas[i].delta;
+            }
+        }
+        if(i == GLOBAL_DELTA_NUM)
+        {
+            return 0;
+        }
+    }
+    void set_global_delta(uint64_t this_baddr)
+    {
+        int64_t delta = this_baddr - last_baddr;
+        last_baddr = this_baddr;
+        for(int i = 0 ; i < GLOBAL_DELTA_NUM ; i++)
+        {
+            if(delta == global_deltas[i].delta)
+            {
+                global_deltas[i].score += 1;
+                global_deltas_sum += global_deltas[i].score;
+                break;
+            }
+        }
+
+        if( i != GLOBAL_DELTA_NUM)
+        {
+            for(int j = 0; j < GLOBAL_DELTA_NUM ; j++)
+            {
+                if(global_deltas[j].lru < global_deltas[i].lru)
+                {
+                    global_deltas[j].lru += 1;
+                }
+            }
+            global_deltas[i].lru = 0;
+        }
+        else
+        {
+            for(int j = 0; j < GLOBAL_DELTA_NUM ; j++)
+            {
+                global_deltas[j].lru += 1;
+                if(global_deltas[j].lru == GLOBAL_DELTA_NUM)
+                {
+                    global_deltas[j].lru =0;
+                    global_deltas[j].delta = delta;
+                    global_deltas[j].score = 0;
+                }
+            }
+        }
     }
 #endif
 
@@ -2541,6 +2625,7 @@
 #endif
 
 #ifdef BERTI_PP_ON
+    #define L1D_RECORD_PAGES_NUM_BERTI 1
     #ifdef BERTI_IP_ON
     #else
         void notify_prefetch(uint64_t addr, uint64_t tag, uint32_t cpu, uint64_t cycle)
@@ -2594,7 +2679,7 @@
   #define L1D_CURRENT_PAGES_TABLE_ENTRIES ((1 << L1D_CURRENT_PAGES_TABLE_INDEX_BITS) - 1) // Null pointer for prev_request
   #define L1D_CURRENT_PAGES_TABLE_NUM_BERTI 10
   #define L1D_CURRENT_PAGES_TABLE_NUM_BERTI_PER_ACCESS 7
-  #define L1D_RECORD_PAGES_NUM_BERTI 1
+
   typedef struct _berti_entry
   {
     int berti;
@@ -2654,22 +2739,9 @@
     return lru;
   }
 
-//   int l1d_get_berti_current_pages_table(uint64_t index, uint64_t &ctr) {
-//     assert(index < L1D_CURRENT_PAGES_TABLE_ENTRIES);
-//     uint64_t max_score = 0;
-//     uint64_t berti = 0;
-//     for (int i = 0; i < L1D_CURRENT_PAGES_TABLE_NUM_BERTI; i++) {
-//       uint64_t score; 
-//       score = l1d_current_pages_table[l1d_cpu_id][index].berti_ctr[i];
-//       if (score > max_score) {
-//         berti = l1d_current_pages_table[l1d_cpu_id][index].berti[i];
-//         max_score = score;
-//         ctr = l1d_current_pages_table[l1d_cpu_id][index].berti_ctr[i];
-//       }
-//     }
-//     return berti;
-//   }
-    void l1d_get_berti_current_pages_table(uint64_t index, uint64_t &ctr, berti_entry bertis[L1D_RECORD_PAGES_NUM_BERTI]) {
+
+    void l1d_get_berti_current_pages_table(uint64_t index, uint64_t &ctr, berti_entry bertis[L1D_RECORD_PAGES_NUM_BERTI]) 
+    {
         assert(index < L1D_CURRENT_PAGES_TABLE_ENTRIES);
         uint64_t max_score = 0;
         uint64_t berti = 0;
@@ -2678,26 +2750,78 @@
             uint64_t score;
             int berti;
         };
-
         BertiInfo berti_info[L1D_CURRENT_PAGES_TABLE_NUM_BERTI];
         for (int i = 0; i < L1D_CURRENT_PAGES_TABLE_NUM_BERTI; i++) 
         {
             berti_info[i].score = l1d_current_pages_table[l1d_cpu_id][index].berti_ctr[i];
             berti_info[i].berti = l1d_current_pages_table[l1d_cpu_id][index].berti[i];
         }
-
-    // 使用自定义比较函数按照score降序排序
-        std::sort(berti_info, berti_info + L1D_CURRENT_PAGES_TABLE_NUM_BERTI,
-              [](const BertiInfo &a, const BertiInfo &b) {
-                  return a.score > b.score;
-              });
-        for (int i = 0; i < L1D_RECORD_PAGES_NUM_BERTI; i++) 
+        int idx_max = 0;
+        for(int j = 0; j < L1D_RECORD_PAGES_NUM_BERTI; j++)
         {
-            bertis[i].berti = berti_info[i].berti;
-            bertis[i].score = berti_info[i].score;
+            for (int i = 0; i < L1D_CURRENT_PAGES_TABLE_NUM_BERTI; i++) 
+            { 
+                if (berti_info[i].score > max_score) 
+                {
+                    berti = berti_info[i].berti;
+                    max_score = berti_info[i].score;                   
+                    idx_max = i;
+                }
+            }
+            berti_info[idx_max].score = 0;
+            bertis[j].score = max_score;
+            bertis[j].berti = berti;
+            max_score = 0;
+            berti = 0;
         }
-        return ;
-    }
+      }
+
+    //   int l1d_get_berti_current_pages_table(uint64_t index, uint64_t &ctr) {
+    //     assert(index < L1D_CURRENT_PAGES_TABLE_ENTRIES);
+    //     uint64_t max_score = 0;
+    //     uint64_t berti = 0;
+    //     for (int i = 0; i < L1D_CURRENT_PAGES_TABLE_NUM_BERTI; i++) {
+    //       uint64_t score; 
+    //       score = l1d_current_pages_table[l1d_cpu_id][index].berti_ctr[i];
+    //       if (score > max_score) {
+    //         berti = l1d_current_pages_table[l1d_cpu_id][index].berti[i];
+    //         max_score = score;
+    //         ctr = l1d_current_pages_table[l1d_cpu_id][index].berti_ctr[i];
+    //       }
+    //     }
+    //     return berti;
+    //   }
+
+
+    // void l1d_get_berti_current_pages_table(uint64_t index, uint64_t &ctr, berti_entry bertis[L1D_RECORD_PAGES_NUM_BERTI]) {
+    //     assert(index < L1D_CURRENT_PAGES_TABLE_ENTRIES);
+    //     uint64_t max_score = 0;
+    //     uint64_t berti = 0;
+    //     struct BertiInfo 
+    //     {
+    //         uint64_t score;
+    //         int berti;
+    //     };
+
+    //     BertiInfo berti_info[L1D_CURRENT_PAGES_TABLE_NUM_BERTI];
+    //     for (int i = 0; i < L1D_CURRENT_PAGES_TABLE_NUM_BERTI; i++) 
+    //     {
+    //         berti_info[i].score = l1d_current_pages_table[l1d_cpu_id][index].berti_ctr[i];
+    //         berti_info[i].berti = l1d_current_pages_table[l1d_cpu_id][index].berti[i];
+    //     }
+
+    // // 使用自定义比较函数按照score降序排序
+    //     std::sort(berti_info, berti_info + L1D_CURRENT_PAGES_TABLE_NUM_BERTI,
+    //           [](const BertiInfo &a, const BertiInfo &b) {
+    //               return a.score > b.score;
+    //           });
+    //     for (int i = 0; i < L1D_RECORD_PAGES_NUM_BERTI; i++) 
+    //     {
+    //         bertis[i].berti = berti_info[i].berti;
+    //         bertis[i].score = berti_info[i].score;
+    //     }
+    //     return ;
+    // }
 
 
   void l1d_add_current_pages_table(uint64_t index, uint64_t page_addr, uint64_t ip, uint64_t offset) {
@@ -4169,6 +4293,9 @@ void CACHE::l1d_prefetcher_initialize()
         l1d_init_record_pages_table();
         l1d_init_ip_table();
     #endif
+    #ifdef GLOBAL_DELTA
+        global_delta_init();
+    #endif
     #ifdef BOP_ON
         bop_deltas_table_init(cpu);
     #endif
@@ -4549,6 +4676,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
         l1d_get_berti_current_pages_table(index, berti_confidence,current_bertis);
         uint64_t match_confidence = 0;
         
+
         // If match with current page+first_offset, use record
         //如果page和起始的offset都匹配，并且当前在这个页的访问轨迹和之前record table中记录的访问轨迹完全一致
         //这种属于高度匹配
@@ -4563,11 +4691,17 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
           }
           match_confidence = 1; // High confidence
           recorded = true;
+          #ifdef PP_TYPE
+            if(warmup_complete[cpu] == 1)
+            {
+                std::cout << "pgo";
+            }
+          #endif
         } 
         else
         // If match with current ip+first_offset, use record
-        //如果当前ip访问的页的偏移，与这个ip之前访问的页的偏移相同，而且页内的访问轨迹也相同
-        //这个时候说明在record——page中没有对应的条目
+        // 如果当前ip访问的页的偏移，与这个ip之前访问的页的偏移相同，而且页内的访问轨迹也相同
+        // 这个时候说明在record——page中没有对应的条目
         if (l1d_record_pages_table[l1d_cpu_id][ip_pointer].first_offset == first_offset
           && (l1d_record_pages_table[l1d_cpu_id][ip_pointer].u_vector | l1d_current_pages_table[l1d_cpu_id][index].u_vector) == l1d_record_pages_table[l1d_cpu_id][ip_pointer].u_vector) 
         {
@@ -4579,6 +4713,12 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
           }
           match_confidence = 1; // High confidence
           recorded = true;
+          #ifdef PP_TYPE
+            if(warmup_complete[cpu] == 1)
+            {
+                std::cout << "ip+offset" ;
+            }
+          #endif
         } else
         // If no exact match, trust current if it has already a berti
         //如果没有匹配的，但是有分数比较高的delta,那么就用当前这个hot page的信息，并且只选择一个得分最高的delta
@@ -4592,6 +4732,12 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
             bertis[i].berti = current_bertis[i].berti;
             bertis[i].score = current_bertis[i].score;
           }
+          #ifdef PP_TYPE
+            if(warmup_complete[cpu] == 1)
+            {
+                std::cout << "hot_page";
+            }
+          #endif
         } else
         // If match with current page, use record
         //如果当前hot page没有合适的，但是有这个页之前的信息，也就是这个页之前的其他delta
@@ -4604,6 +4750,12 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
             bertis[i].score =  l1d_record_pages_table[l1d_cpu_id][pg_pointer].bertis[i].score;
           }
           recorded = true;
+          #ifdef PP_TYPE
+            if(warmup_complete[cpu] == 1)
+            {
+                std::cout << "record_page";
+            }
+          #endif
         } else
         // If match with current ip, use record
         //这个ip应该会指向这个页，所以这个循环应该是进不去的？
@@ -4616,7 +4768,24 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
             bertis[i].score =  l1d_record_pages_table[l1d_cpu_id][ip_pointer].bertis[i].score;
           }
           recorded = true;
+          #ifdef PP_TYPE
+            if(warmup_complete[cpu] == 1)
+            {
+                std::cout << "ip";
+            }
+          #endif
         }
+        else
+        {
+            #ifdef PP_TYPE
+                if(warmup_complete[cpu] == 1)
+                {
+                    std::cout << "no match";
+                }
+            #endif
+        }
+         
+
 
         // Burst for the first access of a page or if pending bursts
         //如果当前是对一个hot page的第一次访问，或者是上一次突发结束的不为0，说明需要突发
@@ -4793,7 +4962,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
           { // not recorded
           }	
         }
-        
+        mix_delta new_delta;
         for(int i = 0; i < L1D_RECORD_PAGES_NUM_BERTI; i++)
         {
             if (bertis[i].berti != 0) 
@@ -4802,11 +4971,12 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                 uint64_t pf_addr = pf_line_addr << LOG2_BLOCK_SIZE;
                 uint64_t pf_page_addr = pf_line_addr >> L1D_PAGE_BLOCKS_BITS;
                 uint64_t pf_offset = pf_line_addr & L1D_PAGE_OFFSET_MASK;
-                if (!l1d_requested_offset_current_pages_table(index, pf_offset)&&(pf_page_addr == page_addr) // Only prefetch if not demanded
+                if (!l1d_requested_offset_current_pages_table(index, pf_offset)&&(pf_page_addr == page_addr)// Only prefetch if not demanded
                     && (!match_confidence || (((uint64_t)1 << pf_offset) & u_vector))) 
                 { // And prev. accessed
                     #ifdef MIX_DELTA
-                        mix_delta new_delta = {pf_addr,ip,FILL_L1,{1},index,bertis[i].score,{bertis[i].score}};
+                        //new_delta = {pf_addr,ip,FILL_L1,{1},index,bertis[i].score,{bertis[i].score}};
+                        new_delta = {pf_addr,ip,FILL_L1,{1},index,8,{8}};
                         mergeDelta(mix_deltas,new_delta);
                         //std::cout << "PP: " << ip<<" "<<addr<<" "<<pf_addr<<" "<<std::endl;
                     #else
@@ -4817,10 +4987,40 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                         l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
                         }
                     #endif
+                    #ifdef PP_TYPE
+                        if(warmup_complete[cpu] == 1)
+                        {
+                            std::cout << " "<<"P" ;
+                        }
+                    #endif
                     
                 }
+                else
+                {
+                    #ifdef PP_TYPE
+                        if(warmup_complete[cpu] == 1)
+                        {
+                            std::cout << " "<<"F";
+                        }
+                    #endif
+                }
             }
+            else
+            {
+                #ifdef PP_TYPE
+                    if(warmup_complete[cpu] == 1)
+                    {
+                        std::cout << " " << "0";
+                    }
+                #endif
+            }          
         }
+        #ifdef PP_TYPE
+            if(warmup_complete[cpu] == 1)
+            {
+                std::cout << std::endl;
+            }
+        #endif
       } 
     #endif
 
@@ -5015,18 +5215,24 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                 case(L2):{fill_level = 2; break;}
                 case(L2R):{fill_level = 3; break;}
             }
-            bool prefetched = false;
-            if( (std::find(elem.prefetcher.begin(), elem.prefetcher.end(), 0) != elem.prefetcher.end()) || (std::find(elem.prefetcher.begin(), elem.prefetcher.end(), 1) != elem.prefetcher.end()))
-            {   
-                prefetched = prefetch_line(elem.ip, addr, elem.pf_addr, elem.fill_level, 0);
-                if(prefetched)
-                {
-                    l1d_add_prev_prefetches_table(elem.berti_pp_index, ((elem.pf_addr)>>LOG2_BLOCK_SIZE)&L1D_PAGE_OFFSET_MASK, current_core_cycle[cpu]);
-                }              
-            }
-            else
+            int pref_count = 0;
+            if(pref_count <= 2)
             {
-                prefetched = prefetch_line(elem.ip, addr, elem.pf_addr, elem.fill_level, 1);
+                bool prefetched = false;
+                if( (std::find(elem.prefetcher.begin(), elem.prefetcher.end(), 0) != elem.prefetcher.end()) || (std::find(elem.prefetcher.begin(), elem.prefetcher.end(), 1) != elem.prefetcher.end()))
+                {   
+                    prefetched = prefetch_line(elem.ip, addr, elem.pf_addr, elem.fill_level, 0);
+                    pref_count++;
+                    if(prefetched)
+                    {
+                        l1d_add_prev_prefetches_table(elem.berti_pp_index, ((elem.pf_addr)>>LOG2_BLOCK_SIZE)&L1D_PAGE_OFFSET_MASK, current_core_cycle[cpu]);
+                    }              
+                }
+                else
+                {
+                    prefetched = prefetch_line(elem.ip, addr, elem.pf_addr, elem.fill_level, 1);
+                    pref_count++;
+                }
             }
             #ifdef BERTI_IP_TABLE_DEBUG           
                 if(warmup_complete[cpu] == 1)
