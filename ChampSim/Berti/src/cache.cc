@@ -3590,7 +3590,6 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
             }
 #endif
 
-
             if (packet->address == 0)
                 assert(0);
 

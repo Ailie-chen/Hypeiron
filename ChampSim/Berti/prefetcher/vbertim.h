@@ -205,7 +205,7 @@ typedef struct mix_delta_struct
     uint64_t pf_addr;
     uint64_t ip;
     int fill_level;
-    std::vector<int> prefetcher;//0:berti_pp_cold, 1:berti_pp_hot,2:nextline, 3:berti_ip,4:bop
+    std::vector<int> prefetcher;//0:berti_pp_cold, 1:berti_pp_hot,2:nextline, 3:berti_ip,4:bop,5:bingo
     uint64_t berti_pp_index;
     uint64_t score;
     std::vector<uint64_t> scores;

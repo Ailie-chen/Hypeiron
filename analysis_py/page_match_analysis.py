@@ -20,16 +20,17 @@ def count_keyword_proportions(file_path, keywords):
             for keyword in keywords:
                 if keyword in line:
                     keyword_counts[keyword] += 1
-    
+    print(file_path)
+    print(total_lines)
     keyword_proportions = {keyword: count / total_lines for keyword, count in keyword_counts.items()}
     return keyword_proportions
 
 def main():
     # Define the directory containing the files and the output file
-    directory = './outputsum/output0922/spec2k17/'  # Modify this to the path of your directory
+    directory = './outputsum/output0917/spec2k17/'  # Modify this to the path of your directory
     output_file_path = 'output_results.txt'
-    keywords = ["ip P", "ip F", "pgo P", "pgo F", "ip+offset P", "ip+offset F", 
-                "hot_page P", "hot_page F", "record_page F", "record_page P", "no match"]
+    keywords = ["ip P", "ip F","ip 0", "pgo P", "pgo F","pgo 0", "ip+offset P", "ip+offset F","ip+offset 0", 
+                "hot_page P", "hot_page F","hot_page 0", "record_page F", "record_page P","record_page 0", "no match 0"]
     
     with open(output_file_path, 'w') as output_file:
         for filename in sorted(os.listdir(directory)):
