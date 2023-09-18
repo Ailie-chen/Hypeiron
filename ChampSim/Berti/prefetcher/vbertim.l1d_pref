@@ -805,11 +805,194 @@
             Super::set_mru(key); 
         }
 
+
+        //使用不同阶的delta来进行访问
+        //定义函数
+        int get_find_vector(vector<delta_entry> step_deltas, int delta)
+        {
+            int i;
+            for(i = 0; i < step_deltas.size(); i++)
+            {
+                if(step_deltas[i].delta == delta)
+                {
+                    return i;
+                }
+            }
+            if(i == step_deltas.size())
+            {
+                return -1;
+            }
+        }
+        vector<delta_entry> get_N_step(vector<delta_entry> deltas, int n )
+        {
+            vector<delta_entry> step_deltas;
+            int find_index;
+            int step_delta;
+            for(int step = 1; step <= n; step++)
+            {
+                for(int i = 0; i < int(deltas.size()) - step; i++)
+                {
+                    step_delta = deltas[i+step].delta - deltas[i].delta;
+                    find_index = get_find_vector(step_deltas, step_delta);
+                    if(find_index == -1)
+                    {
+                        step_deltas.push_back({step_delta,1});
+                    }
+                    else{
+                        step_deltas[find_index].score += 1;
+                    }
+                }
+            }
+            return step_deltas;
+        }
         /**
         * First searches for a PC+Address match. If no match is found, returns all PC+Offset matches.
         * @return All un-rotated patterns if matches were found, returns an empty vector otherwise
         */
         #ifdef BINGO_DELTA
+            // PrefetchStreamerData find(uint64_t pc, uint64_t address) 
+            // {   
+            //     #ifdef BINGO_DELTA_DEBUG
+            //         std::cout << "find_start" << std::endl;
+            //     #endif
+            //     if (this->debug_level >= 2)
+            //         cerr << "PatternHistoryTable::find(pc=0x" << hex << pc << ", address=0x" << address << ")" << dec << endl;
+            //     uint64_t key = this->build_key(pc, address);
+            //     uint64_t index = key % this->num_sets;
+            //     uint64_t tag = key / this->num_sets;
+            //     auto &set = this->entries[index];
+            //     uint64_t min_tag_mask = (1 << (this->pc_width + this->min_addr_width - this->index_len)) - 1;
+            //     uint64_t max_tag_mask = (1 << (this->pc_width + this->max_addr_width - this->index_len)) - 1;
+            //     vector<delta_entry> matches;
+            //     this->last_event = MISS;
+            //     matches.clear();
+            //     int match_num =0;
+            //     int offset = address % (this->pattern_len);
+            //     for (int i = 0; i < this->num_ways; i += 1) 
+            //     {
+            //         //Neelu: Incrementing read accesses for PHT
+            //         Super::tag_read_accesses++;
+            //         if (!set[i].valid)
+            //             continue;
+            //         bool min_match = ((set[i].tag & min_tag_mask) == (tag & min_tag_mask));
+            //         bool max_match = ((set[i].tag & max_tag_mask) == (tag & max_tag_mask));
+            //         Super::read_accesses++;
+            //         vector<delta_entry> &cur_pattern = set[i].data.deltas;
+
+            //         if (max_match) {
+            //             #ifdef BINGO_DELTA_DEBUG
+            //                 std::cout << "max_match" << std::endl;
+            //             #endif
+            //             this->last_event = PC_ADDRESS;
+            //             Super::set_mru(set[i].key);
+            //                 //Neelu: considering write for MRU
+            //                 Super::tag_write_accesses++;
+            //             matches.clear();
+            //             match_num = 0;
+            //             #ifdef BINGO_DELTA_DEBUG
+            //                 for(int i = 0; i < cur_pattern.size(); i++)
+            //                 {            
+            //                     if(cur_pattern[i].delta != 0)
+            //                     {               
+            //                         std::cout << cur_pattern[i].delta<< " ";
+            //                     }
+            //                 }
+            //                 std::cout << std::endl;
+            //             #endif
+            //             for(int i = 0; i < cur_pattern.size(); i++)
+            //             {                           
+            //                 matches.push_back({cur_pattern[i].delta,PC_ADDRESS_FILL_LEVEL});
+            //             }
+            //             break;
+            //         }
+            //         if (min_match) {
+            //             match_num += 1;
+            //             this->last_event = PC_OFFSET;
+            //             #ifdef BINGO_DELTA_DEBUG
+            //                 std::cout << "min_match" << std::endl;
+            //                 for(int cur_idx = 0; cur_idx < cur_pattern.size();cur_idx++)
+            //                 {
+            //                     if(cur_pattern[cur_idx].delta != 0)
+            //                     {
+            //                         std::cout << cur_pattern[cur_idx].delta << " ";
+            //                     }
+            //                     //std::cout <<"delta:" << cur_pattern[cur_idx].delta << " score:"<<cur_pattern[cur_idx].score<<" ";
+            //                 }
+            //                 std::cout << std::endl;
+            //             #endif
+                        
+            //             if(matches.size() == 0)
+            //             {
+            //                 for(int i = 0; i < cur_pattern.size(); i++)
+            //                 {                           
+            //                     matches.push_back({cur_pattern[i].delta,cur_pattern[i].score});
+            //                 }
+
+            //             }
+            //             else
+            //             {
+            //                 for(int cur_idx = 0; cur_idx < cur_pattern.size();cur_idx++)
+            //                 {
+            //                     int dest_idx = 0;
+            //                     for(dest_idx = 0; dest_idx < matches.size(); dest_idx++)
+            //                     {
+            //                         if(matches[dest_idx].delta == cur_pattern[cur_idx].delta)
+            //                         {
+            //                             matches[dest_idx].score += 1;
+            //                             break;
+            //                         }
+            //                     }
+            //                     if(dest_idx == matches.size())
+            //                     {
+            //                         matches.push_back({cur_pattern[cur_idx].delta,cur_pattern[cur_idx].score});
+            //                     }
+            //                 }
+            //             }
+            //         }
+            //     }
+            //     //使用delta来进行访问，一阶，二阶和三阶
+
+            //     #ifdef BINGO_DELTA_DEBUG
+            //         std::cout << "find_end" << std::endl;
+            //     #endif
+            //     if(match_num > 0)
+            //     {
+            //         this->vote_cnt += 1;
+            //         this->voter_sum += match_num;
+            //         this->voter_sqr_sum += square(match_num);
+            //         for(int i = 0; i < matches.size(); i++)
+            //         {
+            //             double p = 1.0 * matches[i].score / match_num;
+            //             if(p >= L1D_THRESH)
+            //                 matches[i].score = FILL_L1;
+            //             else if(p >= L2C_THRESH)
+            //                 matches[i].score = FILL_L2;
+            //             else if(p >= LLC_THRESH)
+            //                 matches[i].score = FILL_LLC;
+            //             else
+            //                 matches[i].score = 0;
+            //         }
+
+            //     }
+            //     // #ifdef BINGO_DELTA_DEBUG
+            //     //     std::cout << "find_matches" << std::endl;
+            //     //     for(int i = 0; i < matches.size(); i++)
+            //     //     {
+            //     //         if(matches[i].score != 0)
+            //     //         {
+            //     //             std::cout <<"delta:" << matches[i].delta <<" score:" <<matches[i].score << " ";
+            //     //         }
+            //     //     }
+            //     //     std::cout << "end_match" << std::endl;
+            //     // #endif
+            //     vector<bool> prev_pref;
+            //     prev_pref.resize(this->pattern_len,false);
+            //     PrefetchStreamerData pf_stream_entry;
+            //     pf_stream_entry.deltas = matches;
+            //     pf_stream_entry.prev_pref = prev_pref;
+            //     pf_stream_entry.trigger_offset = offset;
+            //     return pf_stream_entry;
+            // }
             PrefetchStreamerData find(uint64_t pc, uint64_t address) 
             {   
                 #ifdef BINGO_DELTA_DEBUG
@@ -837,7 +1020,8 @@
                     bool min_match = ((set[i].tag & min_tag_mask) == (tag & min_tag_mask));
                     bool max_match = ((set[i].tag & max_tag_mask) == (tag & max_tag_mask));
                     Super::read_accesses++;
-                    vector<delta_entry> &cur_pattern = set[i].data.deltas;
+                    vector<delta_entry> cur_pattern = get_N_step(set[i].data.deltas,3);
+                    
 
                     if (max_match) {
                         #ifdef BINGO_DELTA_DEBUG
@@ -861,7 +1045,7 @@
                         #endif
                         for(int i = 0; i < cur_pattern.size(); i++)
                         {                           
-                            matches.push_back({cur_pattern[i].delta,PC_ADDRESS_FILL_LEVEL});
+                            matches.push_back({cur_pattern[i].delta,cur_pattern[i].score});
                         }
                         break;
                     }
@@ -891,47 +1075,28 @@
                         }
                         else
                         {
+                            int find_index;
                             for(int cur_idx = 0; cur_idx < cur_pattern.size();cur_idx++)
                             {
-                                int dest_idx = 0;
-                                for(dest_idx = 0; dest_idx < matches.size(); dest_idx++)
-                                {
-                                    if(matches[dest_idx].delta == cur_pattern[cur_idx].delta)
-                                    {
-                                        matches[dest_idx].score += 1;
-                                        break;
-                                    }
-                                }
-                                if(dest_idx == matches.size())
+                                find_index = get_find_vector(matches, cur_pattern[cur_idx].delta);
+                                if(find_index == -1)
                                 {
                                     matches.push_back({cur_pattern[cur_idx].delta,cur_pattern[cur_idx].score});
+                                }
+                                else
+                                {
+                                    matches[find_index].score += cur_pattern[cur_idx].score;
                                 }
                             }
                         }
                     }
                 }
+                //使用delta来进行访问，一阶，二阶和三阶
+
                 #ifdef BINGO_DELTA_DEBUG
                     std::cout << "find_end" << std::endl;
                 #endif
-                if(match_num > 0)
-                {
-                    this->vote_cnt += 1;
-                    this->voter_sum += match_num;
-                    this->voter_sqr_sum += square(match_num);
-                    for(int i = 0; i < matches.size(); i++)
-                    {
-                        double p = 1.0 * matches[i].score / match_num;
-                        if(p >= L1D_THRESH)
-                            matches[i].score = FILL_L1;
-                        else if(p >= L2C_THRESH)
-                            matches[i].score = FILL_L2;
-                        else if(p >= LLC_THRESH)
-                            matches[i].score = FILL_LLC;
-                        else
-                            matches[i].score = 0;
-                    }
-
-                }
+                std::sort(matches.begin(), matches.end(), [](const delta_entry& a, const delta_entry& b) {return a.score > b.score;});         
                 // #ifdef BINGO_DELTA_DEBUG
                 //     std::cout << "find_matches" << std::endl;
                 //     for(int i = 0; i < matches.size(); i++)
@@ -943,10 +1108,15 @@
                 //     }
                 //     std::cout << "end_match" << std::endl;
                 // #endif
+                std::vector<delta_entry> maxScoreVector;
+                if(matches.size() != 0)
+                {
+                    maxScoreVector.push_back({matches[0].delta,1});
+                }
                 vector<bool> prev_pref;
                 prev_pref.resize(this->pattern_len,false);
                 PrefetchStreamerData pf_stream_entry;
-                pf_stream_entry.deltas = matches;
+                pf_stream_entry.deltas = maxScoreVector;
                 pf_stream_entry.prev_pref = prev_pref;
                 pf_stream_entry.trigger_offset = offset;
                 return pf_stream_entry;
@@ -1068,6 +1238,7 @@
             /* key = base + hash_index( pc + offset )
             * The index must be computed from only PC+Offset to ensure that all entries with the same
             * PC+Offset end up in the same set */
+            //这里的index_len为log2(num_sets)，继承自基础的类，所以，这个地方的Index_key就是完全的set索引，然后tag包含着page_addr的信息
             uint64_t index_key = hash_index((pc << this->min_addr_width) | offset, this->index_len);
             uint64_t key = (base << (this->pc_width + this->min_addr_width)) | index_key;
             return key;
@@ -1119,6 +1290,92 @@
         #endif
         
         #ifdef BINGO_DELTA
+            // int prefetch(CACHE *cache, uint64_t block_address) {
+            //     if (this->debug_level >= 2) {
+            //         cerr << "PrefetchStreamer::prefetch(cache=" << cache->NAME << ", block_address=0x" << hex << block_address
+            //             << ")" << dec << endl;
+            //         cerr << "[PrefetchStreamer::prefetch] " << cache->PQ.occupancy << "/" << cache->PQ.SIZE
+            //             << " PQ entries occupied." << dec << endl;
+            //         cerr << "[PrefetchStreamer::prefetch] " << cache->MSHR.occupancy << "/" << cache->MSHR.SIZE
+            //             << " MSHR entries occupied." << dec << endl;
+            //     }
+            //     uint64_t base_addr = block_address << LOG2_BLOCK_SIZE;
+            //     int region_offset = block_address % this->pattern_len;
+            //     uint64_t region_number = block_address / this->pattern_len;
+            //     uint64_t key = this->build_key(region_number);
+            //     #ifdef BINGO_DELTA_DEBUG
+            //         std::cout << "region_number:"<< region_number << " region_offset:"<<region_offset<<" key:"<<key<<std::endl;
+            //     #endif
+            //     Entry *entry = Super::find(key);
+            //     if (!entry) {
+            //         if (this->debug_level >= 2)
+            //             cerr << "[PrefetchStreamer::prefetch] No entry found." << dec << endl;
+            //         return 0;
+            //     }
+            //     Super::set_mru(key);
+            //     //Neelu: considering write for MRU
+            //     Super::tag_write_accesses++;
+            //     int pf_issued = 0;
+            //     vector<delta_entry> deltas = entry->data.deltas;
+            //     vector<bool> &prev_pref = entry->data.prev_pref;
+            //     int trigger_offset =  entry->data.trigger_offset;
+            //     int offset_delta = region_offset - trigger_offset;
+            //     prev_pref[region_offset] = true;
+            //     for(int i = 0 ; i < deltas.size(); i++)
+            //     {
+            //         deltas[i].delta = deltas[i].delta - (offset_delta);
+            //     }
+            //     std::sort(deltas.begin(), deltas.end(), 
+            //                 [](const delta_entry& a, const delta_entry& b) -> bool {
+            //                     // 如果绝对值相同
+            //                     if (abs(a.delta) == abs(b.delta)) {
+            //                         // 正数放在前面
+            //                         return a.delta > b.delta;
+            //                     }
+            //                     // 绝对值小的放在前面
+            //                     return abs(a.delta) < abs(b.delta);
+            //                 });
+            //     int pf_offset; 
+            //     #ifdef BINGO_DELTA_DEBUG
+            //         std::cout << "pref_start" << std::endl;
+            //     #endif
+
+            //     for(int i = 0; i < deltas.size(); i++)
+            //     {
+            //         pf_offset = region_offset + deltas[i].delta;
+            //         bool no_prev_pref = true;
+            //         if (0 <= pf_offset && pf_offset < this->pattern_len && (!prev_pref[pf_offset]) && deltas[i].score > 0)
+            //         {                        
+            //             uint64_t pf_address = (region_number * this->pattern_len + pf_offset) << LOG2_BLOCK_SIZE;
+            //             if (cache->PQ.occupancy + cache->MSHR.occupancy < cache->MSHR.SIZE - 1 
+            //                 && cache->PQ.occupancy < cache->PQ.SIZE) 
+            //             {
+            //                 #ifdef BINGO_DELTA_DEBUG
+            //                     std::cout << pf_offset << " " << deltas[i].score << std::endl;
+            //                 #endif
+            //                 int ok = cache->prefetch_line(0, base_addr, pf_address, deltas[i].score, 0);
+            //                 // assert(ok == 1);
+            //                 pf_issued += 1;
+            //                 prev_pref[pf_offset] = true;
+            //             } 
+            //             else 
+            //             {
+            //                 #ifdef BINGO_DELTA_DEBUG
+            //                     /* prefetching limit is reached */
+            //                     std::cout <<"pref_end" << std::endl;
+            //                 #endif
+            //                 return pf_issued;
+            //             }
+
+            //         }
+            //     }
+            //     #ifdef BINGO_DELTA_DEBUG
+            //         std::cout <<"pref_end" << std::endl;
+            //     #endif
+            //     /* all prefetches done for this spatial region */
+            //     Super::erase(key);
+            //     return pf_issued;
+            // }
             int prefetch(CACHE *cache, uint64_t block_address) {
                 if (this->debug_level >= 2) {
                     cerr << "PrefetchStreamer::prefetch(cache=" << cache->NAME << ", block_address=0x" << hex << block_address
@@ -1150,20 +1407,20 @@
                 int trigger_offset =  entry->data.trigger_offset;
                 int offset_delta = region_offset - trigger_offset;
                 prev_pref[region_offset] = true;
-                for(int i = 0 ; i < deltas.size(); i++)
-                {
-                    deltas[i].delta = deltas[i].delta - (offset_delta);
-                }
-                std::sort(deltas.begin(), deltas.end(), 
-                            [](const delta_entry& a, const delta_entry& b) -> bool {
-                                // 如果绝对值相同
-                                if (abs(a.delta) == abs(b.delta)) {
-                                    // 正数放在前面
-                                    return a.delta > b.delta;
-                                }
-                                // 绝对值小的放在前面
-                                return abs(a.delta) < abs(b.delta);
-                            });
+                // for(int i = 0 ; i < deltas.size(); i++)
+                // {
+                //     deltas[i].delta = deltas[i].delta - (offset_delta);
+                // }
+                // std::sort(deltas.begin(), deltas.end(), 
+                //             [](const delta_entry& a, const delta_entry& b) -> bool {
+                //                 // 如果绝对值相同
+                //                 if (abs(a.delta) == abs(b.delta)) {
+                //                     // 正数放在前面
+                //                     return a.delta > b.delta;
+                //                 }
+                //                 // 绝对值小的放在前面
+                //                 return abs(a.delta) < abs(b.delta);
+                //             });
                 int pf_offset; 
                 #ifdef BINGO_DELTA_DEBUG
                     std::cout << "pref_start" << std::endl;
@@ -1615,6 +1872,7 @@
                 /* ===== */
                 return pf_stream_entry;
             }
+            
         #else
             vector<int> find_in_pht(uint64_t pc, uint64_t address) {
                 if (this->debug_level >= 2) {
