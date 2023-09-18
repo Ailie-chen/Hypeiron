@@ -20,7 +20,7 @@
 //#define GLOBAL_DELTA
 //#define BINGO_BOP_ON
 #define BINGO
-#define BINGO_DELTA //开启bingo_delta时必须确保BINGO也开启了
+#define BINGO_DELTA //开启bingo_delta时必须确保BINGO也开启
 //#define MLOP_ON
 //#define MIX_DELTA
 
@@ -157,11 +157,16 @@
     //#define BOP_DEBUG
 #endif
 
+
+
 #ifdef BINGO_DELTA
     #ifndef BINGO
         #define BINGO
     #endif
 #endif
+
+#ifdef 
+
 
 //std::mutex mtx;
 #ifdef BINGO
@@ -178,6 +183,8 @@
     const double L1D_THRESH = 0.75;
     const double L2C_THRESH = 0.25;
     const double LLC_THRESH = 0.25; /* off */
+
+    const int STEP_DEGREE = 31;
     
     /* PC+Address matches are filled into L1 */
     const int PC_ADDRESS_FILL_LEVEL = FILL_L1;
@@ -828,11 +835,15 @@
             vector<delta_entry> step_deltas;
             int find_index;
             int step_delta;
-            for(int step = 1; step <= n; step++)
+            if(deltas.size() <= n && deltas.size() != 0)
             {
-                for(int i = 0; i < int(deltas.size()) - step; i++)
+                return deltas;
+            }
+            else
+            {
+                for(int i = 0; i < int(deltas.size()) - n; i++)
                 {
-                    step_delta = deltas[i+step].delta - deltas[i].delta;
+                    step_delta = deltas[i+n].delta - deltas[i].delta;
                     find_index = get_find_vector(step_deltas, step_delta);
                     if(find_index == -1)
                     {
@@ -1006,113 +1017,143 @@
                 auto &set = this->entries[index];
                 uint64_t min_tag_mask = (1 << (this->pc_width + this->min_addr_width - this->index_len)) - 1;
                 uint64_t max_tag_mask = (1 << (this->pc_width + this->max_addr_width - this->index_len)) - 1;
-                vector<delta_entry> matches;
+                vector<vector<delta_entry>> matches;
                 this->last_event = MISS;
                 matches.clear();
                 int match_num =0;
                 int offset = address % (this->pattern_len);
-                for (int i = 0; i < this->num_ways; i += 1) 
+                vector<delta_entry> matches_degree_n;
+                int num_all_scores;
+                for(int degree = 0; degree < STEP_DEGREE; degree ++)
                 {
-                    //Neelu: Incrementing read accesses for PHT
-                    Super::tag_read_accesses++;
-                    if (!set[i].valid)
-                        continue;
-                    bool min_match = ((set[i].tag & min_tag_mask) == (tag & min_tag_mask));
-                    bool max_match = ((set[i].tag & max_tag_mask) == (tag & max_tag_mask));
-                    Super::read_accesses++;
-                    vector<delta_entry> cur_pattern = get_N_step(set[i].data.deltas,3);
-                    
+                    matches_degree_n.clear();
+                    num_all_scores = 0;
+                    for (int i = 0; i < this->num_ways; i += 1) 
+                    {
+                        //Neelu: Incrementing read accesses for PHT
+                        Super::tag_read_accesses++;
+                        if (!set[i].valid)
+                            continue;
+                        bool min_match = ((set[i].tag & min_tag_mask) == (tag & min_tag_mask));
+                        bool max_match = ((set[i].tag & max_tag_mask) == (tag & max_tag_mask));
+                        Super::read_accesses++;
+                        vector<delta_entry> cur_pattern_debug = set[i].data.deltas;
+                        vector<delta_entry> cur_pattern = get_N_step(set[i].data.deltas,degree+1);                   
 
-                    if (max_match) {
-                        #ifdef BINGO_DELTA_DEBUG
-                            std::cout << "max_match" << std::endl;
-                        #endif
-                        this->last_event = PC_ADDRESS;
-                        Super::set_mru(set[i].key);
-                            //Neelu: considering write for MRU
-                            Super::tag_write_accesses++;
-                        matches.clear();
-                        match_num = 0;
-                        #ifdef BINGO_DELTA_DEBUG
-                            for(int i = 0; i < cur_pattern.size(); i++)
-                            {            
-                                if(cur_pattern[i].delta != 0)
-                                {               
-                                    std::cout << cur_pattern[i].delta<< " ";
+                        if (max_match) {
+                            #ifdef BINGO_DELTA_DEBUG
+                                std::cout << "max_match" << std::endl;
+                            #endif
+                            this->last_event = PC_ADDRESS;
+                            Super::set_mru(set[i].key);
+                                //Neelu: considering write for MRU
+                                Super::tag_write_accesses++;
+                            matches_degree_n.clear();
+                            match_num = 0;
+                            num_all_scores = 0;
+                            #ifdef BINGO_DELTA_DEBUG
+                                for(int i = 0; i < cur_pattern.size(); i++)
+                                {            
+                                    if(cur_pattern[i].delta != 0)
+                                    {               
+                                        std::cout << cur_pattern[i].delta<< " ";
+                                    }
                                 }
-                            }
-                            std::cout << std::endl;
-                        #endif
-                        for(int i = 0; i < cur_pattern.size(); i++)
-                        {                           
-                            matches.push_back({cur_pattern[i].delta,cur_pattern[i].score});
-                        }
-                        break;
-                    }
-                    if (min_match) {
-                        match_num += 1;
-                        this->last_event = PC_OFFSET;
-                        #ifdef BINGO_DELTA_DEBUG
-                            std::cout << "min_match" << std::endl;
-                            for(int cur_idx = 0; cur_idx < cur_pattern.size();cur_idx++)
-                            {
-                                if(cur_pattern[cur_idx].delta != 0)
-                                {
-                                    std::cout << cur_pattern[cur_idx].delta << " ";
-                                }
-                                //std::cout <<"delta:" << cur_pattern[cur_idx].delta << " score:"<<cur_pattern[cur_idx].score<<" ";
-                            }
-                            std::cout << std::endl;
-                        #endif
-                        
-                        if(matches.size() == 0)
-                        {
+                                std::cout << std::endl;
+                            #endif
                             for(int i = 0; i < cur_pattern.size(); i++)
                             {                           
-                                matches.push_back({cur_pattern[i].delta,cur_pattern[i].score});
+                                matches_degree_n.push_back({cur_pattern[i].delta,cur_pattern[i].score});
+                                num_all_scores += cur_pattern[i].score;
                             }
-
+                            break;
                         }
-                        else
-                        {
-                            int find_index;
-                            for(int cur_idx = 0; cur_idx < cur_pattern.size();cur_idx++)
-                            {
-                                find_index = get_find_vector(matches, cur_pattern[cur_idx].delta);
-                                if(find_index == -1)
+                        if (min_match) {
+                            match_num += 1;
+                            this->last_event = PC_OFFSET;
+                            #ifdef BINGO_DELTA_DEBUG
+                                std::cout << "min_match" << std::endl;
+                                for(int cur_idx = 0; cur_idx < cur_pattern.size();cur_idx++)
                                 {
-                                    matches.push_back({cur_pattern[cur_idx].delta,cur_pattern[cur_idx].score});
+                                    if(cur_pattern[cur_idx].delta != 0)
+                                    {
+                                        std::cout << cur_pattern[cur_idx].delta << " ";
+                                    }
+                                    //std::cout <<"delta:" << cur_pattern[cur_idx].delta << " score:"<<cur_pattern[cur_idx].score<<" ";
                                 }
-                                else
+                                std::cout << std::endl;
+                            #endif
+                            
+                            if(matches.size() == 0)
+                            {
+                                for(int i = 0; i < cur_pattern.size(); i++)
+                                {                           
+                                    matches_degree_n.push_back({cur_pattern[i].delta,cur_pattern[i].score});
+                                    num_all_scores += cur_pattern[i].score;
+                                }
+
+                            }
+                            else
+                            {
+                                int find_index;
+                                for(int cur_idx = 0; cur_idx < cur_pattern.size();cur_idx++)
                                 {
-                                    matches[find_index].score += cur_pattern[cur_idx].score;
+                                    num_all_scores += cur_pattern[cur_idx].score;
+                                    find_index = get_find_vector(matches_degree_n, cur_pattern[cur_idx].delta);
+                                    if(find_index == -1)
+                                    {
+                                        matches_degree_n.push_back({cur_pattern[cur_idx].delta,cur_pattern[cur_idx].score});
+                                    }
+                                    else
+                                    {
+                                        matches_degree_n[find_index].score += cur_pattern[cur_idx].score;
+                                    }
                                 }
                             }
                         }
                     }
+                    for(int i = 0; i < matches_degree_n.size(); i++)
+                    {
+                        matches_degree_n[i].score = int(100.0*matches_degree_n[i].score/double(num_all_scores));
+                    }
+                    matches.push_back(matches_degree_n);
                 }
                 //使用delta来进行访问，一阶，二阶和三阶
 
                 #ifdef BINGO_DELTA_DEBUG
                     std::cout << "find_end" << std::endl;
                 #endif
-                std::sort(matches.begin(), matches.end(), [](const delta_entry& a, const delta_entry& b) {return a.score > b.score;});         
+                std::vector<delta_entry> maxScoreVector;
+                for(int degree = 0; degree < matches.size(); degree++)
+                {
+                    std::sort(matches[degree].begin(), matches[degree].end(), [](const delta_entry& a, const delta_entry& b) {return a.score > b.score;}); 
+                    if(matches[degree].size() != 0)
+                    {
+                        if(matches[degree][0].score >= 90)
+                        {
+                            maxScoreVector.push_back({matches[degree][0].delta,1});
+                            maxScoreVector.push_back({-(matches[degree][0].delta),1});
+                        }
+                        else
+                        {
+                            maxScoreVector.push_back({matches[degree][0].delta,2});
+                            maxScoreVector.push_back({-(matches[degree][0].delta),2});
+                        }
+                    }  
+                }      
                 // #ifdef BINGO_DELTA_DEBUG
                 //     std::cout << "find_matches" << std::endl;
-                //     for(int i = 0; i < matches.size(); i++)
+                //     for(int i = 0; i < maxScoreVector.size(); i++)
                 //     {
-                //         if(matches[i].score != 0)
+                //         if(maxScoreVector[i].score != 0)
                 //         {
-                //             std::cout <<"delta:" << matches[i].delta <<" score:" <<matches[i].score << " ";
+                //             std::cout <<"delta:" << maxScoreVector[i].delta <<" score:" <<maxScoreVector[i].score << " ";
                 //         }
                 //     }
                 //     std::cout << "end_match" << std::endl;
                 // #endif
-                std::vector<delta_entry> maxScoreVector;
-                if(matches.size() != 0)
-                {
-                    maxScoreVector.push_back({matches[0].delta,1});
-                }
+                
+                
                 vector<bool> prev_pref;
                 prev_pref.resize(this->pattern_len,false);
                 PrefetchStreamerData pf_stream_entry;
