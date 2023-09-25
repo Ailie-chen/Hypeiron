@@ -25,9 +25,11 @@
 #define LLC_BYPASS
 //#define L2_BYPASS 		//Neelu: While uncommenting, set bypass mode in cache.cc as well, otherwise it will not work. 
 #define DRC_BYPASS
+//MOD_PMP
 //#define NO_CRC2_COMPILE
 
 //#define PUSH_DTLB_PB 	//@Vasudha: Use DTLB Prefetch buffer to store translations that are prefetched by DTLB
+//MOD_PMP
 #define INS_PAGE_TABLE_WALKER
 
 //#define PERFECT_BTB

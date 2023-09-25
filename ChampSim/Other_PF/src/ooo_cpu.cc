@@ -612,10 +612,12 @@ uint32_t O3_CPU::add_to_ifetch_buffer(ooo_model_instr *arch_instr)
 	  IFETCH_BUFFER.entry[index] = *arch_instr;
 	  IFETCH_BUFFER.entry[index].event_cycle = current_core_cycle[cpu];
 
-	//Neelu: Instead of translating instructions magically, translating them as usual to pay ITLB access penalty. 
+	// //Neelu: Instead of translating instructions magically, translating them as usual to pay ITLB access penalty. 
 	IFETCH_BUFFER.entry[index].instruction_pa = 0;
         IFETCH_BUFFER.entry[index].translated = 0;
 	IFETCH_BUFFER.entry[index].fetched = 0;
+
+  
 
 	IFETCH_BUFFER.occupancy++;
 	IFETCH_BUFFER.tail++;
@@ -1109,8 +1111,7 @@ int O3_CPU::prefetch_code_line(uint64_t pf_v_addr)
 		  //Neelu: Cannot magically translate prefetches, need to get realistic and access the TLBs. 
 		  // magically translate prefetches
 		/*  uint64_t pf_pa = (va_to_pa(cpu, 0, pf_v_addr, pf_v_addr>>LOG2_PAGE_SIZE, 1) & (~((1 << LOG2_PAGE_SIZE) - 1))) | (pf_v_addr & ((1 << LOG2_PAGE_SIZE) - 1)); */
-
-		  PACKET pf_packet;
+          PACKET pf_packet;
 		  pf_packet.instruction = 1; // this is a code prefetch
 		  pf_packet.is_data = 0;
 		  pf_packet.fill_level = FILL_L1;

@@ -131,14 +131,17 @@ def parse_file(file: str) -> Tuple[str, str, int, Dict[str, Any]]:
             # print(CONFIGS["evaluate_cache"], line)
             
             for evaluate_cache in ["L1D","L2C","LLC"]:
-                pattern = '^' + evaluate_cache +'.*'+'LOAD' + '\s+' + 'ACCESS:\s+(\d+)\s+HIT:\s+(\d+)\s+MISS:\s+(\d+)'
+                # pattern = '^' + evaluate_cache +'.*'+'LOAD' + '\s+' + 'ACCESS:\s+(\d+)\s+HIT:\s+(\d+)\s+MISS:\s+(\d+)'
+                pattern = '^' + evaluate_cache + '.*' + 'LOAD' + '\s+' + 'ACCESS:\s+(\d+)\s+HIT:\s+(\d+)\s+MISS:\s+(\d+).*MPKI:\s+(\d+\.\d+)'
                 matches = re.search(pattern, line)
                 if matches:
                     load_request = int(matches.group(1))
                     load_hit = int(matches.group(2))
                     load_miss = int(matches.group(3))
+                    load_mpki = float(matches.group(4))
                     entry[evaluate_cache+" Accesses"][current_cpu] = load_request
                     entry[evaluate_cache+" Misses"][current_cpu] = load_miss
+                    
                 pattern2 = '^' + evaluate_cache + '.*' + 'PREFETCH' + '.*' + 'REQUESTED:\s+(\d+)\s+ISSUED:\s+(\d+)\s+USEFUL:\s+(\d+)\s+USELESS:\s+(\d+)\s*$'
                 matches2 = re.search(pattern2, line)
                 if matches2:
@@ -214,7 +217,7 @@ def geo_mean(x):
 def cal_final_results():
     for trace in ROI_ORIGIN_STATS:
         # print(trace)
-        baseline = ROI_ORIGIN_STATS[trace]["ip_stride"]
+        baseline = ROI_ORIGIN_STATS[trace]["no"]
 
         # print(ROI_ORIGIN_STATS[trace]['no'])
         for prefetcher in ROI_ORIGIN_STATS[trace]:
@@ -229,22 +232,27 @@ def cal_final_results():
                 for evaluate_cache in ["L1D","L2C","LLC"]:
                     # print("TRAFFIC: ", entry['Accesses'][cpu], entry['Prefetches'][cpu], baseline['Accesses'][cpu])
                     #scale_coef: baseline的cache的访问次数，除以prefetch的访问次数
-                    # if isinstance(entry[evaluate_cache+' Accesses'][cpu], str):
-                    #     print(evaluate_cache,trace,prefetcher,entry[evaluate_cache+' Accesses'][cpu])
-                    #     entry[evaluate_cache+' Accesses'][cpu]=1
+                    if isinstance(entry[evaluate_cache+' Accesses'][cpu], str):
+                        # print("entry_Access:")
+                        # print(evaluate_cache,trace,prefetcher,entry[evaluate_cache+' Accesses'][cpu])
+                        entry[evaluate_cache+' Accesses'][cpu]=1
+                    if isinstance(baseline[evaluate_cache+' Accesses'][cpu], str):
+                        # print("baseline_Access:")
+                        # print(evaluate_cache,trace,prefetcher,baseline[evaluate_cache+' Accesses'][cpu])
+                        baseline[evaluate_cache+' Accesses'][cpu]=1
                     scale_coef = 1.0 * (baseline[evaluate_cache+' Accesses'][cpu] / entry[evaluate_cache+' Accesses'][cpu])
-                    
                     #print(entry[evaluate_cache+' Accesses'][cpu], entry[evaluate_cache+' Prefetches'][cpu], baseline[evaluate_cache+' Accesses'][cpu])
                     
                     entry[evaluate_cache+' traffic'][cpu] = 1.0 * (entry[evaluate_cache+' Accesses'][cpu] + entry[evaluate_cache+' Prefetches'][cpu])  / baseline[evaluate_cache+' Accesses'][cpu]
                     
                     # entry['IPCI Speedup'][cpu] = entry['IPCI'][cpu] - 1
-                    if(baseline[evaluate_cache+' Misses'][cpu] == 0):
-                        print(trace)
-                        print(prefetcher)
-                        print(evaluate_cache)
-                    if isinstance(entry[evaluate_cache+' Accesses'][cpu], str):
-                        print(evaluate_cache,prefetcher, "scale_coef: ", scale_coef,baseline[evaluate_cache+ ' Misses'][cpu],entry[evaluate_cache+ ' Misses'][cpu])
+                    if(baseline[evaluate_cache+' Misses'][cpu] == 0 or baseline[evaluate_cache+' Misses'][cpu] == '-'):
+                        baseline[evaluate_cache+' Misses'][cpu] = 1
+                        # print(trace)
+                        # print(prefetcher)
+                        # print(evaluate_cache)
+                    if isinstance(entry[evaluate_cache+' Misses'][cpu], str):
+                        # print(evaluate_cache,prefetcher, "scale_coef: ", scale_coef,baseline[evaluate_cache+ ' Misses'][cpu],entry[evaluate_cache+ ' Misses'][cpu])
                         entry[evaluate_cache+ ' Misses'][cpu]=1
                     entry[evaluate_cache+ ' Coverage'][cpu] = 1.0 - 1.0 * entry[evaluate_cache+ ' Misses'][cpu] / baseline[evaluate_cache+' Misses'][cpu] * scale_coef
                     
@@ -257,7 +265,8 @@ def cal_final_results():
                         entry[evaluate_cache+' Accuracy'][cpu] = 1.0 * entry[evaluate_cache+' Prefetch Hits'][cpu] / (entry[evaluate_cache+' Prefetch Hits'][cpu] + entry[evaluate_cache+' Non-useful Prefetches'][cpu])
                     
                     entry[evaluate_cache+ ' MPKI'][cpu] = 1000.0 * entry[evaluate_cache+' Misses'][cpu] / entry['Instructions'][cpu]
-                
+                    # if(prefetcher == 'vberti' and evaluate_cache == 'L1D' and entry[evaluate_cache+ ' MPKI'][cpu] >= 1.0):
+                    #     print(trace)
                 if "TIME PC+Address Prefetches" in entry and  entry['TIME PC+Address Prefetches'][cpu] != '-':
                     entry['Prefetches'][cpu] = max(entry['Prefetches'][cpu],1)
                     entry['Non-useful Prefetches'][cpu] = max(entry['Non-useful Prefetches'][cpu],1)
@@ -283,7 +292,7 @@ def cal_final_results():
     # print("Each IPC",ROI_ORIGIN_STATS["mix1"]["bingo"]['Each IPC'])
     # Get the average value between cores
     for trace in ROI_ORIGIN_STATS:
-        baseline_origin = ROI_ORIGIN_STATS[trace]["ip_stride"]
+        baseline_origin = ROI_ORIGIN_STATS[trace]["no"]
         for prefetcher in ROI_ORIGIN_STATS[trace]:
             entry = ROI_ORIGIN_STATS[trace][prefetcher]
             # print(trace,prefetcher,entry["PHT Match Probability"])
@@ -676,8 +685,8 @@ def bingo_evaluate():
     
     #("1core_spec_compare_all_80M", "output_prefetchers"),
     #("1core_spec2k17_compare_mem_tense","output_prefetchers"),
-    (f"1core_{sys.argv[1]}_compare_mem_tense","output_prefetchers"),
-
+     (f"1core_{sys.argv[1]}_compare_mem_tense","output_prefetchers"),
+    # (f"1core_{sys.argv[1]}_compare_all_80M","output_prefetchers"),
 
     # ("1core_rate", "output_prefetchers"),
     

@@ -135,7 +135,7 @@ extern map <uint64_t, uint64_t> temp_page_table;
 void print_stats();
 uint64_t rotl64 (uint64_t n, unsigned int c),
          rotr64 (uint64_t n, unsigned int c),
-         va_to_pa(uint32_t cpu, uint64_t instr_id, uint64_t va, uint64_t unique_vpage);
+         va_to_pa(uint32_t cpu, uint64_t instr_id, uint64_t va, uint64_t unique_vpage, uint8_t is_code);
 
 // log base 2 function from efectiu
 int lg2(int n);

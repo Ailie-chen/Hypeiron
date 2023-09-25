@@ -43,6 +43,7 @@ extern uint32_t PAGE_TABLE_LATENCY, SWAP_LATENCY;
 #define ITLB_MSHR_SIZE 8
 #define ITLB_LATENCY 1
 
+
 // DATA TLB
 #define DTLB_SET 16
 #define DTLB_WAY 4

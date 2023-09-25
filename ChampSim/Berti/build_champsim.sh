@@ -194,7 +194,10 @@ cp replacement/${ITLB_REPLACEMENT}.itlb_repl replacement/itlb_replacement.cc
 cp replacement/${DTLB_REPLACEMENT}.dtlb_repl replacement/dtlb_replacement.cc
 cp replacement/${STLB_REPLACEMENT}.stlb_repl replacement/stlb_replacement.cc
 
-
+echo "L1D"
+echo $L1D_PREFETCHER
+echo "LLC"
+echo $L1D_PREFETCHER
 
 # Build
 mkdir -p bin

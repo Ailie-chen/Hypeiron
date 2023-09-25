@@ -486,11 +486,17 @@ void finish_warmup()
     elapsed_second -= (elapsed_hour*3600 + elapsed_minute*60);
 
     // reset core latency
-    SCHEDULING_LATENCY = 6;
-    EXEC_LATENCY = 1;
+    // SCHEDULING_LATENCY = 6;
+    // EXEC_LATENCY = 1;
     DECODE_LATENCY = 2;
-    PAGE_TABLE_LATENCY = 100;
-    SWAP_LATENCY = 100000;
+    // PAGE_TABLE_LATENCY = 100;
+    // SWAP_LATENCY = 100000;
+    //MOD_PMP
+    SCHEDULING_LATENCY = 0;
+    EXEC_LATENCY = 0;
+    PAGE_TABLE_LATENCY = 10;
+    SWAP_LATENCY = 10;
+
 
     cout << endl;
     for (uint32_t i=0; i<NUM_CPUS; i++) {
@@ -714,6 +720,7 @@ uint64_t rotr64 (uint64_t n, unsigned int c)
 RANDOM champsim_rand(champsim_seed);
 
 #ifndef INS_PAGE_TABLE_WALKER
+//MOD_PMP
 uint64_t va_to_pa(uint32_t cpu, uint64_t instr_id, uint64_t va, uint64_t unique_vpage)
 {
 #ifdef SANITY_CHECK
@@ -897,7 +904,6 @@ uint64_t va_to_pa(uint32_t cpu, uint64_t instr_id, uint64_t va, uint64_t unique_
         stall_cycle[cpu] = current_core_cycle[cpu] + PAGE_TABLE_LATENCY;
 */
     //cout << "cpu: " << cpu << " allocated unique_vpage: " << hex << unique_vpage << " to ppage: " << ppage << dec << endl;
-
     return pa;
 }
 #endif

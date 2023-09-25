@@ -1,8 +1,8 @@
 {
     "simulator_path":"/home/cuiyujie/workspace/prefetch/PMP-main",
     "baseline_results_dir": "outputsum/output0701/cs",
-    "date":"0916",
-    "results_dir":["outputsum/output0702/cs","outputsum/output0916/cs"],
+    "date":"0702",
+    "results_dir":["outputsum/output0702/cs","outputsum/output0702/cs"],
     "stats_dir"  : "evaluationmemtense/cs/all_results",
     "core_num": 1,
     "insts_num": "80M",
@@ -45,7 +45,7 @@
 
     "output_prefetchers": [
 
-     
+        "no",
         "ip_stride",
         "ipcp_isca2020",
         "mlop_dpc3",

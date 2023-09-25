@@ -54,7 +54,7 @@ void CACHE::handle_fill()
         // find victim
         uint32_t set = get_set(MSHR.entry[mshr_index].address), way;
         way = (this->*find_victim)(fill_cpu, MSHR.entry[mshr_index].instr_id, set, block[set], MSHR.entry[mshr_index].ip, MSHR.entry[mshr_index].full_addr, MSHR.entry[mshr_index].type);
-
+        
 
         //Neelu: Fill Packet type for L2
         uint8_t fill_packet_type = 0; //1.Translation 2. Instruction 3. Data
@@ -69,7 +69,7 @@ void CACHE::handle_fill()
                 fill_packet_type = 3;
         }
 
-
+       
 
 #ifdef L2_BYPASS
 
@@ -138,7 +138,7 @@ void CACHE::handle_fill()
 
             // update replacement policy
             (this->*update_replacement_state)(fill_cpu, set, way, MSHR.entry[mshr_index].full_addr, MSHR.entry[mshr_index].ip, 0, MSHR.entry[mshr_index].type, 0);
-
+            
             // COLLECT STATS
             sim_miss[fill_cpu][MSHR.entry[mshr_index].type]++;
             sim_access[fill_cpu][MSHR.entry[mshr_index].type]++;
@@ -1952,6 +1952,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
 
                                         // emulate page table walk
                                         uint64_t pa = va_to_pa(read_cpu, RQ.entry[index].instr_id, RQ.entry[index].full_addr, RQ.entry[index].address);
+                                        
                                         RQ.entry[index].data = pa >> LOG2_PAGE_SIZE; 
                                         RQ.entry[index].event_cycle = current_core_cycle[read_cpu];
 
@@ -2715,6 +2716,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                                 if(cache_type == IS_STLB) {
                                     //emulate page table walk
                                     uint64_t pa = va_to_pa(PQ.entry[index].cpu, PQ.entry[index].instr_id, PQ.entry[index].full_addr, PQ.entry[index].address);
+                            
                                     PQ.entry[index].data = pa >> LOG2_PAGE_SIZE;
                                     PQ.entry[index].event_cycle = current_core_cycle[cpu];
                                     if(PQ.entry[index].l1_pq_index != -1)
@@ -4080,7 +4082,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
             }
             MSHR.entry[mshr_index].data = packet->data;
 #endif
-
+            
             if(cache_type==IS_ITLB||cache_type==IS_DTLB||cache_type==IS_STLB)
             {
                 if(MSHR.entry[mshr_index].data == 0)

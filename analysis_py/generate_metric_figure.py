@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
-#dates=["0928"]
-dates=["0928"]
+#dates=["0703"]
+dates=["0703"]
 traces=["spec2k17"]
 metrics=['IPC','IPCI','L1D LOAD_ACCURACY','L1D MPKI']
 
@@ -21,7 +21,7 @@ def draw_chart_for_metric(data, metric,figure_res):
     # 获得标签，并提取相对应的metric的数据
     benchmarks_name = data.iloc[0, 2:].tolist()
     num_benchmarks = data.shape[1] - 2       # remove prefetcher_name and metric name
-    prefetcher_range = [0, 1, 2, 3, 4]
+    prefetcher_range = [0, 1, 2, 3, 4,5]
     num_prefetchers = len(prefetcher_range)
 
     metric_data = data[data.iloc[:, 1].str.contains(metric)]

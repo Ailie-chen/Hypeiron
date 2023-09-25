@@ -10,7 +10,7 @@ if not os.path.exists(save_path):
  # 如果目录不存在，则创建该目录
     os.makedirs(save_path)
 traces = ['spec2k17']
-dates = ['0703','0822','0927','0928']
+dates = ['0703','0935','0936']
 #dates = ['0703','0704',]
 #metrics = ['IPC','IPCI','L1D Accuracy','L1D Coverage']
 metrics = ['IPC','IPCI','L1D LOAD_ACCURACY','L1D MPKI','L1D Overprediction','L1D traffic']
@@ -44,8 +44,9 @@ dic = dict([ ('vberti', 'IP'),
         ('0919', 'Berti_ip+bingo+berti_pp'),
         ('0920', 'Berti_ip+bingo+berti_pp+nextline'),
         ('0924', 'Bingo_delta(1)'),
-        ('0927', 'Bingo_delta(31,1)'),
-        ('0928', 'Bingo_delta(31,12)'),
+        ('0935', 'PMP'),
+        ('0936', 'Berti_pp+nextline+Berti'),
+        ('0930', 'PMP(Best)')
 
 ])
 
@@ -60,11 +61,11 @@ for trace in traces:
             benchmarks_name = df.iloc[2:, 0].tolist() 
             num_benchmarks = len(benchmarks_name)      # remove prefetcher_name and metric name
         # 如果日期是'0703'，还需要提取vberti的metrics数据
-        if date == '0703':
-            for metric in metrics:
-                for column in df.columns:
-                    if 'vberti' == df[column].iloc[0] and metric == df[column].iloc[1]:
-                        data[('vberti', metric)] = df[column].iloc[2:].values
+        # if date == '0703':
+        #     for metric in metrics:
+        #         for column in df.columns:
+        #             if 'vberti' == df[column].iloc[0] and metric == df[column].iloc[1]:
+        #                 data[('vberti', metric)] = df[column].iloc[2:].values
 
         # 提取vbertim的metrics数据
         for metric in metrics:

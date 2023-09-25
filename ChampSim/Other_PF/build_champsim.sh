@@ -29,7 +29,7 @@ DTLB_REPLACEMENT=${15}  # prefetcher/*.dtlb_repl
 STLB_REPLACEMENT=${16}  # prefetcher/*.stlb_repl
 
 NUM_CORE=${17}         # tested up to 8-core system
-
+DATE_SET=${19}
 ############## Some useful macros ###############
 BOLD=$(tput bold)
 NORMAL=$(tput sgr0)
@@ -198,11 +198,12 @@ cp replacement/${STLB_REPLACEMENT}.stlb_repl replacement/stlb_replacement.cc
 mkdir -p bin
 rm -f bin/champsim
 make clean
-if [ "$#" -eq 19 ]; then
-    make CC=${19} CCX=${19}
-else
-    make
-fi
+make
+# if [ "$#" -eq 19 ]; then
+#     make CC=${19} CCX=${19}
+# else
+#     make
+# fi
 
 # Sanity check
 echo ""
@@ -233,8 +234,9 @@ echo "STLB Replacement: ${STLB_REPLACEMENT}"
 echo "Cores: ${NUM_CORE}"
 BINARY_NAME="${BRANCH}-${L1I_PREFETCHER}-${L1D_PREFETCHER}-${L2C_PREFETCHER}-${LLC_PREFETCHER}-${ITLB_PREFETCHER}-${DTLB_PREFETCHER}-${STLB_PREFETCHER}-${BTB_REPLACEMENT}-${L1I_REPLACEMENT}-${L1D_REPLACEMENT}-${L2C_REPLACEMENT}-${LLC_REPLACEMENT}-${ITLB_REPLACEMENT}-${DTLB_REPLACEMENT}-${STLB_REPLACEMENT}-${NUM_CORE}core-${18}"
 echo "Binary: bin/${BINARY_NAME}"
-echo ""
-mv bin/champsim bin/${BINARY_NAME}
+#mv bin/champsim bin/${BINARY_NAME}
+#在前面加上日期前缀
+mv bin/champsim bin/${DATE_SET}${BINARY_NAME}
 
 
 # Restore to the default configuration

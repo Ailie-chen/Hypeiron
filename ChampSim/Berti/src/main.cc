@@ -523,9 +523,15 @@ void finish_warmup()
     // reset core latency
     SCHEDULING_LATENCY = 6;
     EXEC_LATENCY = 1;
-    DECODE_LATENCY = 2;
     PAGE_TABLE_LATENCY = 100;
     SWAP_LATENCY = 100000;
+    DECODE_LATENCY = 2;
+    //MOD_PMP
+    // SCHEDULING_LATENCY = 0;
+    // EXEC_LATENCY = 0;
+    // DECODE_LATENCY = 0;
+    // PAGE_TABLE_LATENCY = 10;
+    // SWAP_LATENCY = 10;
 
     cout << endl;
     for (uint32_t i=0; i<NUM_CPUS; i++) {
