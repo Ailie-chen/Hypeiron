@@ -1,7 +1,7 @@
 #ifndef VBERTI_H_
 #define VBERTI_H_
 
-#define BERTI_IP_TABLE_DEBUG
+//#define BERTI_IP_TABLE_DEBUG
 
 #include "vberti_size.h"
 

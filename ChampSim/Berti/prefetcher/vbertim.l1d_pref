@@ -20,10 +20,10 @@
 //#define GLOBAL_DELTA
 //#define BINGO_BOP_ON
 #define BINGO
-//#define BINGO_DELTA //开启bingo_delta时必须确保BINGO也开启
+#define BINGO_DELTA //开启bingo_delta时必须确保BINGO也开启
 //#define PMP_ON
 //#define MLOP_ON
-//#define MIX_DELTA
+#define MIX_DELTA
 
 //******debug开关********//
 #define RECORD_IP_ADDR false
@@ -37,6 +37,52 @@
 #define L1D_PAGE_BLOCKS_BITS (LOG2_PAGE_SIZE - LOG2_BLOCK_SIZE)
 #define L1D_PAGE_BLOCKS (1 << L1D_PAGE_BLOCKS_BITS)
 #define L1D_PAGE_OFFSET_MASK (L1D_PAGE_BLOCKS - 1)
+
+
+#define PAGE_GLOBAL_DELTAS_SIZE 32
+typedef struct _page_global_delta_entry
+{
+    int64_t delta;
+    uint64_t score;
+} page_global_delta_entry;
+page_global_delta_entry page_global_deltas[32];
+void page_global_deltas_init()
+{
+    for(int i = 0; i < PAGE_GLOBAL_DELTAS_SIZE; i++)
+    {
+        page_global_deltas[i].delta = 0;
+        page_global_deltas[i].score = 0;
+    }
+}
+void page_global_deltas_sum()
+{
+    page_global_deltas[0].score++ ;
+}
+void page_global_deltas_insert(int64_t delta)
+{
+    if(delta == 0)
+        return;
+    for(int i = 1; i < PAGE_GLOBAL_DELTAS_SIZE; i++)
+    {
+        if(page_global_deltas[i].delta == 0)
+        {
+            page_global_deltas[i].delta = delta;
+            page_global_deltas[i].score++ ;
+            break;
+        }
+        else if(page_global_deltas[i].delta == delta)
+        {
+            page_global_deltas[i].score++ ;
+            break;
+        }
+    }
+}
+
+void page_global_deltas_sort()
+{
+    std::sort(page_global_deltas + 1,page_global_deltas + PAGE_GLOBAL_DELTAS_SIZE, [](const page_global_delta_entry& a, const page_global_delta_entry& b) { return a.score >  b.score; });
+}
+
 #ifdef MIX_DELTA
 
 
@@ -3000,6 +3046,14 @@
                     // assert(this->pref_level_cnt.size() <= 3); /* L1, L2, L3 */
                 }
                 /* ===== */
+                page_global_deltas_sum();
+                for(int i = 0; i < pf_stream_entry.deltas.size(); i++ )
+                {
+                    if(pf_stream_entry.deltas[i].score == FILL_L1)
+                    {
+                        page_global_deltas_insert(pf_stream_entry.deltas[i].delta);
+                    }
+                }
                 return pf_stream_entry;
             }
             
@@ -6156,6 +6210,7 @@
 
 void CACHE::l1d_prefetcher_initialize() 
 {   
+    page_global_deltas_init();
     #ifdef BERTI_IP_HIT_MES
         shadow_cache_init(cpu);
         latency_table_init(cpu);
@@ -6276,7 +6331,8 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
     //ip = (ip >> 1) ^ (ip >> 4) ^ (ip >> 8);
     ip = ip & IP_MASK;
     bool berti_ip_trigger = false;
-    
+    int bingo_pf_issued = 0;
+    int berti_ip_pf_issued = 0;
 
     #ifdef BINGO_BOP_ON
         bool bingo_bop_triger = false;      
@@ -7052,6 +7108,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                         #endif
                         {
                             launched_ip++;
+                            berti_ip_pf_issued++;
                         }
                     #endif
                 }
@@ -7229,13 +7286,49 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
         L1D_PREF::prefetchers[cpu].access(block_number, pc);
     
         /* issue prefetches */
-        L1D_PREF::prefetchers[cpu].prefetch(this, block_number);
+        bingo_pf_issued = L1D_PREF::prefetchers[cpu].prefetch(this, block_number);
     
         if (L1D_PREF::DEBUG_LEVEL >= 3) {
             L1D_PREF::prefetchers[cpu].log();
             cerr << "=======================================" << dec << endl;
         }
     #endif
+
+    int page_global_deltas_pf_issued = 0;
+    
+    page_global_deltas_sort();
+    if(berti_ip_pf_issued == 0 && bingo_pf_issued == 0)
+    {
+        for(int i = 1 ; i < PAGE_GLOBAL_DELTAS_SIZE ; i++)
+        {
+            if(page_global_deltas[i].delta == 0)
+            {
+                break;
+            }
+            else
+            {
+                uint64_t p_addr = (line_addr + page_global_deltas[i].delta) << LOG2_BLOCK_SIZE;
+                float conf = (1.0 * page_global_deltas[i].score / page_global_deltas[0].score )*100;
+                if(conf >= L1D_PREF::L1D_THRESH && page_global_deltas_pf_issued <= 3)
+                {
+                    if(prefetch_line(ip, addr, p_addr, FILL_L1,1)){
+                        page_global_deltas_pf_issued++;
+                    }
+                }
+                else if(conf >= L1D_PREF::L2C_THRESH && page_global_deltas_pf_issued <= 3)
+                {
+                    if(prefetch_line(ip, addr, p_addr, FILL_L2,1)){
+                        page_global_deltas_pf_issued++;
+                    }
+                }
+            }
+
+        }
+    }//berti_ip_pf_issued > 0 && page_global_deltas[0].score == PAGE_GLOBAL_DELTAS_SIZE
+    else if(bingo_pf_issued > 0 && page_global_deltas[0].score == PAGE_GLOBAL_DELTAS_SIZE)
+    {
+        page_global_deltas_init();
+    }
 
     #ifdef PMP_ON
         if (PMP_PREF::DEBUG_LEVEL >= 2)
