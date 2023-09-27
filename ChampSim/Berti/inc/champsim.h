@@ -30,7 +30,7 @@
 //#define PUSH_DTLB_PB 	//@Vasudha: Use DTLB Prefetch buffer to store translations that are prefetched by DTLB
 #define INS_PAGE_TABLE_WALKER
 
-#define PERFECT_BTB
+//#define PERFECT_BTB
 
 //Neelu: Perfect vs. Practical Perfect: 
 //Practical Perfect takes into account the bandwidth constraint between the current cache level and the outer cache hierarchy. What does this mean? 
