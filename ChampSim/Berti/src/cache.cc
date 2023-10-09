@@ -1911,6 +1911,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                     uint8_t miss_handled = 1;
                     int mshr_index = check_nonfifo_queue(&MSHR, &RQ.entry[index],false); //@Vishal: Updated from check_mshr
 
+
                     if(mshr_index == -2)
                     {
                         // this is a data/instruction collision in the MSHR, so we have to wait before we can allocate this miss
@@ -2494,7 +2495,6 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                         return;
                     }
                     int index = PQ.head;
-
                     //如果L1D和L1I的地址越界了就会pf_dropped++,因为是在pq中，所以pf_dropped++，移除这个请求，处理下一个请求(循环是在每个周期读的最大的数？)
                     if((cache_type == IS_L1D || cache_type == IS_L1I) && (PQ.entry[PQ.head].full_physical_address >> LOG2_PAGE_SIZE) == (UINT64_MAX >> LOG2_PAGE_SIZE))
                     {
@@ -2509,7 +2509,6 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                     // access cache
                     uint32_t set = get_set(PQ.entry[index].address);
                     int way = check_hit(&PQ.entry[index]);
-
                     if (way >= 0) { // prefetch hit
 
                         // update replacement policy
@@ -2655,7 +2654,6 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                         // check mshr
                         uint8_t miss_handled = 1;
                         int mshr_index = check_nonfifo_queue(&MSHR, &PQ.entry[index],false); //@Vishal: Updated from check_mshr
-
                         //如果没有命中，就现在缺失状态寄存器中寻找有没有同类的，如果没有找到：
                         if ((mshr_index == -1) && (MSHR.occupancy < MSHR_SIZE)) { // this is a new miss
 
@@ -2848,7 +2846,13 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                                 //如果没有足够的MSHR，那么就stall
                             }
                             else if (mshr_index != -1) { // already in-flight miss
-
+                                // if(cache_type == IS_L1D)
+                                // {
+                                //     if((PQ.entry[index].pf_metadata == 62 && MSHR.entry[mshr_index].pf_metadata == 63) || (PQ.entry[index].pf_metadata == 63 && MSHR.entry[mshr_index].pf_metadata == 62))
+                                //     {
+                                //         MSHR.entry[mshr_index].pf_metadata = 64;
+                                //     }
+                                // }
                                 //request coming from both DTLB and ITLB should be returned to both
                                 if(cache_type == IS_STLB)
                                 {
@@ -3916,13 +3920,15 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
         {
 
             assert(packet->type == PREFETCH || packet->type == PREFETCH_TRANSLATION);
-
+            
             // @Vishal: L1I cache does not send prefetch request
             // Neelu: Added instruction prefetching support, so commenting this assert. 
             //assert(cache_type != IS_L1I);
 
             // check for the latest wirtebacks in the write queue 
             // @Vishal: WQ is non-fifo for L1 cache
+
+
 
             int wq_index;
             if(cache_type == IS_L1D || cache_type == IS_L1I)
@@ -4090,12 +4096,20 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                     PQ.entry[index].fill_l1d = 1;
                 }
 
+                // if(cache_type == IS_L1D)
+                // {
+                //     if((PQ.entry[index].pf_metadata == 62 && packet->pf_metadata == 63) || (PQ.entry[index].pf_metadata == 63 && packet->pf_metadata == 62))
+                //     {
+                //         PQ.entry[index].pf_metadata = 64;
+                //     }
+                // }
+
                 PQ.MERGED++;
                 PQ.ACCESS++;
-
+                
                 return index; // merged index
             }
-
+            
             // check occupancy
             if (PQ.occupancy == PQ_SIZE) {
                 PQ.FULL++;

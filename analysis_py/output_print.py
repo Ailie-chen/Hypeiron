@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
-#dates=["0816"]
-dates=["0816"]
+#dates=["0937"]
+dates=["0937"]
 traces=["spec2k17"]
 # metrics=['IPC','IPCI','L1D LOAD_ACCURACY','L1D MPKI']
 metrics=['IPC','IPCI']
@@ -17,8 +17,8 @@ def print_for_metric(data, metric):
     # 获得标签，并提取相对应的metric的数据
     benchmarks_name = data.iloc[0, 2:].tolist()
     num_benchmarks = data.shape[1] - 2       # remove prefetcher_name and metric name
-    prefetcher_range = [0, 1, 2, 3, 4]
-    # prefecher_range =[],0代表ip_stride,1代表ipcp, 2代表dpc3_mlop,3代表vberti，4代表vbertim
+    prefetcher_range = [0, 1, 2, 3, 4,5]
+    # prefecher_range =[],0代表no,1代表ip_stride,2代表ipcp, 3代表dpc3_mlop,4代表vberti，5代表vbertim
     num_prefetchers = len(prefetcher_range)
 
     metric_data = data[data.iloc[:, 1].str.contains(metric)]
@@ -28,10 +28,10 @@ def print_for_metric(data, metric):
     metric_data_df = metric_data.iloc[:,2:2+num_benchmarks]
     metric_data_df = metric_data_df.replace('-', 0).astype(float)
 
-    vberti_value = metric_data.iloc[3,2:2+num_benchmarks]
+    vberti_value = metric_data.iloc[4,2:2+num_benchmarks]
     vberti_value = vberti_value.replace('-', 0)
     vberti_value = vberti_value.astype(float)
-    vbertim_value = metric_data.iloc[4,2:2+num_benchmarks]
+    vbertim_value = metric_data.iloc[5,2:2+num_benchmarks]
     vbertim_value = vbertim_value.replace('-', 0)
     vbertim_value = vbertim_value.astype(float)
     

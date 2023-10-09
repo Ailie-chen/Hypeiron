@@ -10,7 +10,7 @@ if not os.path.exists(save_path):
  # 如果目录不存在，则创建该目录
     os.makedirs(save_path)
 traces = ['spec2k17']
-dates = ['0703','0935','0936']
+dates = ['0703','0966','0967']
 #dates = ['0703','0704',]
 #metrics = ['IPC','IPCI','L1D Accuracy','L1D Coverage']
 metrics = ['IPC','IPCI','L1D LOAD_ACCURACY','L1D MPKI','L1D Overprediction','L1D traffic']
@@ -46,7 +46,10 @@ dic = dict([ ('vberti', 'IP'),
         ('0924', 'Bingo_delta(1)'),
         ('0935', 'PMP'),
         ('0936', 'Berti_pp+nextline+Berti'),
-        ('0930', 'PMP(Best)')
+        ('0930', 'PMP(Best)'),
+        ('0952', 'berti_ip+bingo'),
+        ('0967', 'berti_ip+berti_PP'),
+        ('0966', 'berti_ip+berti_ip+global_page_delta')
 
 ])
 
@@ -57,7 +60,7 @@ for trace in traces:
         # 读取数据
         file_path = os.path.join(base_path, trace, 'all_results_figs', date + '.csv')
         df = pd.read_csv(file_path, header=None)
-        if date == '0703':
+        if date == '0966':
             benchmarks_name = df.iloc[2:, 0].tolist() 
             num_benchmarks = len(benchmarks_name)      # remove prefetcher_name and metric name
         # 如果日期是'0703'，还需要提取vberti的metrics数据

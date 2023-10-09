@@ -1,7 +1,7 @@
 #ifndef VBERTI_H_
 #define VBERTI_H_
 
-//#define BERTI_IP_TABLE_DEBUG
+// #define BERTI_IP_TABLE_DEBUG
 
 #include "vberti_size.h"
 
@@ -213,3 +213,13 @@ typedef struct mix_delta_struct
 std::vector<mix_delta> mix_deltas;
 void mergeDelta(std::vector<mix_delta> &data, const mix_delta &newElement);
 bool compare_delta_scores(const mix_delta &a, const mix_delta &b);
+
+typedef struct _berti_pp_pref_entry
+{
+    uint64_t ip;
+    uint64_t addr;
+    uint64_t pf_addr;  
+    int fill_level;
+}berti_pp_pref_entry;
+
+std::queue<berti_pp_pref_entry> berti_pp_pref_queue;
