@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
-#dates=["0967"]
-dates=["0967"]
+#dates=["1001"]
+dates=["1001"]
 traces=["spec2k17"]
 metrics=['IPC','IPCI','L1D LOAD_ACCURACY','L1D MPKI']
 

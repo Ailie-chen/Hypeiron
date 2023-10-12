@@ -265,8 +265,8 @@ def cal_final_results():
                         entry[evaluate_cache+' Accuracy'][cpu] = 1.0 * entry[evaluate_cache+' Prefetch Hits'][cpu] / (entry[evaluate_cache+' Prefetch Hits'][cpu] + entry[evaluate_cache+' Non-useful Prefetches'][cpu])
                     
                     entry[evaluate_cache+ ' MPKI'][cpu] = 1000.0 * entry[evaluate_cache+' Misses'][cpu] / entry['Instructions'][cpu]
-                    # if(prefetcher == 'vberti' and evaluate_cache == 'L1D' and entry[evaluate_cache+ ' MPKI'][cpu] >= 1.0):
-                    #     print(trace)
+                    # if(prefetcher == 'vberti' and evaluate_cache == 'L1D' and entry[evaluate_cache+ ' MPKI'][cpu] >= 5.0):
+                    #     print(f"\"{trace}\",")
                 if "TIME PC+Address Prefetches" in entry and  entry['TIME PC+Address Prefetches'][cpu] != '-':
                     entry['Prefetches'][cpu] = max(entry['Prefetches'][cpu],1)
                     entry['Non-useful Prefetches'][cpu] = max(entry['Non-useful Prefetches'][cpu],1)
