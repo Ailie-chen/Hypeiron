@@ -31,7 +31,7 @@
 
 //******debug开关********//
 #define RECORD_IP_ADDR false
-//#define RECORD_DELTAS
+#define RECORD_DELTAS false
 #define LANZAR_INT 8
 //#define PP_TYPE
 //#define BINGO_DELTA_DEBUG
@@ -6308,14 +6308,14 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
     
 
 
-    // if(warmup_complete[cpu] == 1)
-    // {
-    //     std::cout << "pc:"<<pc <<" "<<"ip:"<<ip<<" ";
-    //     std::cout << "offset:"<<(line_addr%(1<<LOG2_BLOCKS_PER_PAGE))<<" ";
-    //     std::cout << "baddr:"<< line_addr<<" ";
-    //     std::cout << "vpaddr:"<< (line_addr >> LOG2_BLOCKS_PER_PAGE)<<" ";
-    //     std::cout << std::endl;
-    // }
+    if(warmup_complete[cpu] == 1)
+    {
+        std::cout << "pc:"<<pc <<" "<<"ip:"<<ip<<" ";
+        std::cout << "offset:"<<(line_addr%(1<<LOG2_BLOCKS_PER_PAGE))<<" ";
+        std::cout << "baddr:"<< line_addr<<" ";
+        std::cout << "vpaddr:"<< (line_addr >> LOG2_BLOCKS_PER_PAGE)<<" ";
+        std::cout << std::endl;
+    }
     #ifdef BERTI_IP_TABLE_DEBUG
         bool trigger_miss = false;
         if(warmup_complete[cpu] == 1)
@@ -7189,9 +7189,9 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                     // Level of prefetching depends son CONFIDENCE
                     if (stride[i].rpl == L1 && mshr_load < MSHR_LIMIT)
                     {
-                        #ifdef RECORD_DELTAS
+                        if(RECORD_DELTAS){
                             std::cout << stride[i].stride << " ";
-                        #endif                  
+                        }               
                         fill_level = FILL_L1;
                         
                         #ifdef MIX_DELTA
@@ -7204,9 +7204,9 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                         #endif
                     } else if (stride[i].rpl == L1 || stride[i].rpl == L2 
                             || stride[i].rpl == L2R ){
-                        #ifdef RECORD_DELTAS
+                        if(RECORD_DELTAS){
                             std::cout << stride[i].stride << " ";
-                        #endif                   
+                        }                  
                         fill_level = FILL_L2;
                         #ifdef MIX_DELTA
                             if(stride[i].stride != 0)

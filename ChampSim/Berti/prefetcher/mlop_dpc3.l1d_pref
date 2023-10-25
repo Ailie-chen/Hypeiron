@@ -4,8 +4,10 @@
 #include <bits/stdc++.h>
 
 using namespace std;
-
-namespace L1D_PREF {
+void notify_prefetch(uint64_t addr, uint64_t tag, uint32_t cpu, uint64_t cycle)
+{
+}
+namespace L1D_PREF_2 {
 
 /**
  * A class for printing beautiful data tables.
@@ -839,12 +841,13 @@ void CACHE::l1d_prefetcher_initialize() {
     /*======================*/
 
     /* construct prefetcher for all cores */
-    L1D_PREF::prefetchers =
-        vector<L1D_PREF::MLOP>(NUM_CPUS, L1D_PREF::MLOP(BLOCKS_IN_ZONE, AMT_SIZE, PREFETCH_DEGREE, NUM_UPDATES,
-                                              L1D_THRESH, L2C_THRESH, LLC_THRESH, L1D_PREF::DEBUG_LEVEL));
+    L1D_PREF_2::prefetchers =
+        vector<L1D_PREF_2::MLOP>(NUM_CPUS, L1D_PREF_2::MLOP(BLOCKS_IN_ZONE, AMT_SIZE, PREFETCH_DEGREE, NUM_UPDATES,
+                                              L1D_THRESH, L2C_THRESH, LLC_THRESH, L1D_PREF_2::DEBUG_LEVEL));
 }
 
-void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit, uint8_t type) {
+void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit, uint8_t type, uint8_t critical_ip_flag)
+{
     if (type != LOAD)
         return;
 
@@ -866,34 +869,34 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
 
     if (trigger_access)
         /* update MLOP with most recent trigger access */
-        L1D_PREF::prefetchers[cpu].access(block_number);
+        L1D_PREF_2::prefetchers[cpu].access(block_number);
 
     /* issue prefetches */
-    L1D_PREF::prefetchers[cpu].mark(block_number, L1D_PREF::State::ACCESS);
-    L1D_PREF::prefetchers[cpu].prefetch(this, block_number);
+    L1D_PREF_2::prefetchers[cpu].mark(block_number, L1D_PREF_2::State::ACCESS);
+    L1D_PREF_2::prefetchers[cpu].prefetch(this, block_number);
 
-    if (L1D_PREF::DEBUG_LEVEL >= 3) {
-        L1D_PREF::prefetchers[cpu].log();
+    if (L1D_PREF_2::DEBUG_LEVEL >= 3) {
+        L1D_PREF_2::prefetchers[cpu].log();
         cerr << "=======================================" << dec << endl;
     }
 
     /* stats */
-    L1D_PREF::prefetchers[cpu].track(block_number);
+    L1D_PREF_2::prefetchers[cpu].track(block_number);
 }
 
-void CACHE::l1d_prefetcher_cache_fill(
-    uint64_t addr, uint32_t set, uint32_t way, uint8_t prefetch, uint64_t evicted_addr, uint32_t metadata_in) {
+void CACHE::l1d_prefetcher_cache_fill(uint64_t v_addr,uint64_t addr, uint32_t set, uint32_t way, uint8_t prefetch, uint64_t v_evicted_addr, uint64_t evicted_addr, uint32_t metadata_in)
+{
     if (this->block[set][way].valid == 0)
         return; /* no eviction */
 
     uint64_t evicted_block_number = evicted_addr >> LOG2_BLOCK_SIZE;
-    L1D_PREF::prefetchers[cpu].mark(evicted_block_number, L1D_PREF::State::INIT);
+    L1D_PREF_2::prefetchers[cpu].mark(evicted_block_number, L1D_PREF_2::State::INIT);
 
     /* stats */
-    L1D_PREF::prefetchers[cpu].track(evicted_block_number);
+    L1D_PREF_2::prefetchers[cpu].track(evicted_block_number);
 }
 
 void CACHE::l1d_prefetcher_final_stats() {
     cout << "=== CPU " << cpu << " L1D Prefetcher Statistics ===" << endl;
-    L1D_PREF::prefetchers[cpu].print_stats();
+    L1D_PREF_2::prefetchers[cpu].print_stats();
 }

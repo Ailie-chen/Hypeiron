@@ -1693,6 +1693,10 @@ int main(int argc, char** argv)
 
             // check for warmup
             // warmup complete
+            // if(ooo_cpu[i].num_retired >= 30000000)
+            // {
+            //     spec_intructions_complete = true;
+            // }
             if ((warmup_complete[i] == 0) && (ooo_cpu[i].num_retired > warmup_instructions)) {
                 warmup_complete[i] = 1;
                 all_warmup_complete++;

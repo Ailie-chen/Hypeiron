@@ -4,7 +4,7 @@
 #include "memory_class.h"
 //#define PREFETCHER_CLASS_DEBUG
 //#define MEMORY_ACCESS_PATTERN_DEBUG
-
+extern bool spec_intructions_complete;
 #ifdef MEMORY_ACCESS_PATTERN_DEBUG
     #include<unordered_map>
     typedef struct act_ValuePair_struct

@@ -21,6 +21,7 @@
 # define MAX_HISTORY_IP               (8)
 # define MAX_PF                       (16)
 # define MAX_PF_LAUNCH                (12)
+// # define MAX_PF_LAUNCH                (2)
 # define STRIDE_MASK                  (12)
 
 // Mask
@@ -46,7 +47,7 @@
 # define L1                           (0x1)
 # define L2                           (0x2)
 # define L2R                          (0x3)
-
+# define NO_PREFETCH                  (0x4)
 // Structs define
 typedef struct latency_table {
     uint64_t addr; // Addr
