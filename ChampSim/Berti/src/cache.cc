@@ -2846,31 +2846,31 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                                 //如果没有足够的MSHR，那么就stall
                             }
                             else if (mshr_index != -1) { // already in-flight miss
-                                if(1)//cache_type == IS_L1D
-                                {
-                                    if(PQ.entry[index].pf_metadata != 0 && MSHR.entry[mshr_index].pf_metadata == 0)
-                                    {
-                                        // if(PQ.entry[index].pf_metadata == 63){
-                                        //     std::cout << "MSHR:bingo_merge_to_no" << std::endl;
-                                        // }
-                                        // else{
-                                        //     std::cout << "MSHR:ip_merge_to_no" << std::endl;
-                                        // }
-                                        MSHR.entry[mshr_index].pf_metadata = PQ.entry[index].pf_metadata;
-                                    }
-                                    else if((PQ.entry[index].pf_metadata == 62 && MSHR.entry[mshr_index].pf_metadata == 63) 
-                                    || (PQ.entry[index].pf_metadata == 63 && MSHR.entry[mshr_index].pf_metadata == 62) || PQ.entry[index].pf_metadata == 64)
-                                    {
-                                        // if(PQ.entry[index].pf_metadata == 63){
-                                        //     std::cout << "MSHR:bingo_merge_to_ip" << std::endl;
-                                        // }
-                                        // else{
-                                        //     std::cout << "MSHR:ip_merge_to_bingo" << std::endl;
-                                        // }
-                                        MSHR.entry[mshr_index].pf_metadata = 64;
-                                    }
+                                // if(1)//cache_type == IS_L1D
+                                // {
+                                //     if(PQ.entry[index].pf_metadata != 0 && MSHR.entry[mshr_index].pf_metadata == 0)
+                                //     {
+                                //         // if(PQ.entry[index].pf_metadata == 63){
+                                //         //     std::cout << "MSHR:bingo_merge_to_no" << std::endl;
+                                //         // }
+                                //         // else{
+                                //         //     std::cout << "MSHR:ip_merge_to_no" << std::endl;
+                                //         // }
+                                //         MSHR.entry[mshr_index].pf_metadata = PQ.entry[index].pf_metadata;
+                                //     }
+                                //     else if((PQ.entry[index].pf_metadata == 62 && MSHR.entry[mshr_index].pf_metadata == 63) 
+                                //     || (PQ.entry[index].pf_metadata == 63 && MSHR.entry[mshr_index].pf_metadata == 62) || PQ.entry[index].pf_metadata == 64)
+                                //     {
+                                //         // if(PQ.entry[index].pf_metadata == 63){
+                                //         //     std::cout << "MSHR:bingo_merge_to_ip" << std::endl;
+                                //         // }
+                                //         // else{
+                                //         //     std::cout << "MSHR:ip_merge_to_bingo" << std::endl;
+                                //         // }
+                                //         MSHR.entry[mshr_index].pf_metadata = 64;
+                                //     }
                                     
-                                }
+                                // }
                                 //request coming from both DTLB and ITLB should be returned to both
                                 if(cache_type == IS_STLB)
                                 {
@@ -4114,32 +4114,32 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                     PQ.entry[index].fill_l1d = 1;
                 }
 
-                if(1)//cache_type == IS_L1D
-                {
-                    if(PQ.entry[index].pf_metadata == 0 && packet->pf_metadata != 0)                    
-                    {
-                        // if(packet->pf_metadata == 63){
-                        //     std::cout << "PQ:bingo_merge_to_no" << std::endl;
-                        // }
-                        // else
-                        // {
-                        //     std::cout << "PQ:ip_merge_to_no" << std::endl;
-                        // }
-                        PQ.entry[index].pf_metadata = packet->pf_metadata;
-                    }
-                    else if((PQ.entry[index].pf_metadata == 62 && packet->pf_metadata == 63) 
-                    || (PQ.entry[index].pf_metadata == 63 && packet->pf_metadata == 62) || packet->pf_metadata == 64)
-                    {
-                        // if(packet->pf_metadata == 63){
-                        //     std::cout << "PQ:bingo_merge_to_ip" << std::endl;
-                        // }
-                        // else
-                        // {
-                        //     std::cout << "PQ:ip_merge_to_bingo" << std::endl;
-                        // }
-                        PQ.entry[index].pf_metadata = 64;
-                    }
-                }
+                // if(1)//cache_type == IS_L1D
+                // {
+                //     if(PQ.entry[index].pf_metadata == 0 && packet->pf_metadata != 0)                    
+                //     {
+                //         // if(packet->pf_metadata == 63){
+                //         //     std::cout << "PQ:bingo_merge_to_no" << std::endl;
+                //         // }
+                //         // else
+                //         // {
+                //         //     std::cout << "PQ:ip_merge_to_no" << std::endl;
+                //         // }
+                //         PQ.entry[index].pf_metadata = packet->pf_metadata;
+                //     }
+                //     else if((PQ.entry[index].pf_metadata == 62 && packet->pf_metadata == 63) 
+                //     || (PQ.entry[index].pf_metadata == 63 && packet->pf_metadata == 62) || packet->pf_metadata == 64)
+                //     {
+                //         // if(packet->pf_metadata == 63){
+                //         //     std::cout << "PQ:bingo_merge_to_ip" << std::endl;
+                //         // }
+                //         // else
+                //         // {
+                //         //     std::cout << "PQ:ip_merge_to_bingo" << std::endl;
+                //         // }
+                //         PQ.entry[index].pf_metadata = 64;
+                //     }
+                // }
 
                 PQ.MERGED++;
                 PQ.ACCESS++;

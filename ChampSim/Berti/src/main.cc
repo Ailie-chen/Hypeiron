@@ -1364,7 +1364,7 @@ int main(int argc, char** argv)
 	ooo_cpu[i].L1D.find_victim = &CACHE::l1d_find_victim;
 	ooo_cpu[i].L1D.replacement_final_stats = &CACHE::l1d_replacement_final_stats;
 	(ooo_cpu[i].L1D.*(ooo_cpu[i].L1D.initialize_replacement))();
-
+    
 
         ooo_cpu[i].L2C.cpu = i;
         ooo_cpu[i].L2C.cache_type = IS_L2C;
@@ -1373,6 +1373,7 @@ int main(int argc, char** argv)
         ooo_cpu[i].L2C.upper_level_dcache[i] = &ooo_cpu[i].L1D;
         ooo_cpu[i].L2C.lower_level = &uncore.LLC;
 	ooo_cpu[i].L2C.extra_interface = &ooo_cpu[i].PTW;
+
         ooo_cpu[i].L2C.l2c_prefetcher_initialize();
 
 	ooo_cpu[i].L2C.initialize_replacement = &CACHE::l2c_initialize_replacement;
@@ -1693,10 +1694,11 @@ int main(int argc, char** argv)
 
             // check for warmup
             // warmup complete
-            // if(ooo_cpu[i].num_retired >= 30000000)
-            // {
-            //     spec_intructions_complete = true;
-            // }
+            if(ooo_cpu[i].num_retired >= 20000000)
+            {
+                // spec_intructions_complete = true;
+                // spec_intructions_complete_for_l2c = true;
+            }
             if ((warmup_complete[i] == 0) && (ooo_cpu[i].num_retired > warmup_instructions)) {
                 warmup_complete[i] = 1;
                 all_warmup_complete++;
