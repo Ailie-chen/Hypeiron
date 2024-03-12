@@ -5695,7 +5695,7 @@
         }
     }
 
-
+    
     void vberti_table_add(uint64_t tag, uint32_t cpu, int64_t stride)
     {
         /*
@@ -5712,6 +5712,7 @@
             if (vbertit_queue[cpu].size() > BERTI_TABLE_SIZE)
             {
                 uint64_t key = vbertit_queue[cpu].front();
+                // print_stride_table(cpu, false, key);
                 vberti_t *tmp = vbertit[cpu][key];
                 delete tmp->stride;
                 delete tmp;
@@ -7841,6 +7842,7 @@ void CACHE::l1d_prefetcher_cache_fill(uint64_t v_addr, uint64_t addr,
 
 void CACHE::l1d_prefetcher_final_stats()
 {
+    print_stride_table(cpu, true, 0);
     #ifdef BINGO
         L1D_PREF::prefetchers[cpu].print_stats();
     #endif
@@ -7929,61 +7931,111 @@ void CACHE::l1d_prefetcher_final_stats()
 
   }
 
-  void print_stride_table(uint32_t cpu)
+  void print_stride_table(uint32_t cpu, bool all_print, uint64_t key)
   {
-      std::cout << "stride" << std::endl;
-      //stride的map的key就是tag
-      std::queue<uint64_t> tag_fifo;
-      tag_fifo = vbertit_queue[cpu];
-      while (!tag_fifo.empty()) 
-      {   
-          uint32_t count = 0;
-          uint64_t tag = tag_fifo.front();
-          std::cout <<"tag:" << tag << " ";
-          tag_fifo.pop();
-          vberti_t *tmp = vbertit[cpu][tag];
-          std::cout << tmp->conf << " ";
-          std::cout << tmp->total_used;
-          stride_t *strides = tmp->stride;
-          for (int i = 0; i < BERTI_TABLE_STRIDE_SIZE; i++)
-          {
-              if(strides[i].conf != 0)
-              {
-                  std::cout <<"{"<<strides[i].stride <<" ";
-                  std::cout << strides[i].conf << " "; //置信度
-                  switch(strides[i].rpl)
-                  {
-                      case L1:
-                      {
-                          std::cout << "L1";//根据strides[i].conf/strides.conf置信度来判断放到哪个级别的cache中
-                          break;
-                      }
-                      case L2:
-                      {
-                          std::cout << "L2";//根据strides[i].conf/strides.conf置信度来判断放到哪个级别的cache中
-                          break;
-                      }
-                      case L2R:
-                      {
-                          std::cout << "L2R";//根据strides[i].conf/strides.conf置信度来判断放到哪个级别的cache中
-                          break;
-                      }
-                      case R:
-                      {
-                          std::cout << "R" ;//根据strides[i].conf/strides.conf置信度来判断放到哪个级别的cache中
-                          break;
-                      }
-                  }
-                  std::cout << "}";
-                  if(count == 6){
-                      count = 0;
-                      std::cout << std::endl;
-                  }
-                  count++;
-              }
-          }
-          std::cout <<std::endl;
-      }
-
+    // std::cout << "stride" << std::endl;
+    //stride的map的key就是tag
+    std::queue<uint64_t> tag_fifo;
+    tag_fifo = vbertit_queue[cpu];
+    uint32_t count = 0
+    if(all_print)
+    {
+        while (!tag_fifo.empty()) 
+        {   
+            count = 0;
+            uint64_t tag = tag_fifo.front();
+            std::cout <<"tag:" << tag << " ";
+            tag_fifo.pop();
+            vberti_t *tmp = vbertit[cpu][tag];
+            std::cout << tmp->conf << " ";
+            std::cout << tmp->total_used;
+            stride_t *strides = tmp->stride;
+            for (int i = 0; i < BERTI_TABLE_STRIDE_SIZE; i++)
+            {
+                if(strides[i].conf != 0)
+                {
+                    std::cout <<"{"<<strides[i].stride <<" ";
+                    std::cout << strides[i].conf << " "; //置信度
+                    switch(strides[i].rpl)
+                    {
+                        case L1:
+                        {
+                            std::cout << "1";//根据strides[i].conf/strides.conf置信度来判断放到哪个级别的cache中
+                            break;
+                        }
+                        case L2:
+                        {
+                            std::cout << "2";//根据strides[i].conf/strides.conf置信度来判断放到哪个级别的cache中
+                            break;
+                        }
+                        case L2R:
+                        {
+                            std::cout << "3";//根据strides[i].conf/strides.conf置信度来判断放到哪个级别的cache中
+                            break;
+                        }
+                        case R:
+                        {
+                            std::cout << "0" ;//根据strides[i].conf/strides.conf置信度来判断放到哪个级别的cache中
+                            break;
+                        }
+                    }
+                    std::cout << "}";
+                    if(count == 6){
+                        count = 0;
+                        std::cout << std::endl;
+                    }
+                    count++;
+                }
+            }
+            std::cout <<std::endl;
+        }
+    }
+    else
+    {
+        count = 0
+        vberti_t *tmp = vbertit[cpu][key];
+        std::cout <<"key:" << tag << " ";
+        std::cout << tmp->conf << " ";
+        std::cout << tmp->total_used;
+        stride_t *strides = tmp->stride;
+        for (int i = 0; i < BERTI_TABLE_STRIDE_SIZE; i++)
+        {
+            if(strides[i].conf != 0)
+            {
+                std::cout <<"{"<<strides[i].stride <<" ";
+                std::cout << strides[i].conf << " "; //置信度
+                switch(strides[i].rpl)
+                {
+                    case L1:
+                    {
+                        std::cout << "1";//根据strides[i].conf/strides.conf置信度来判断放到哪个级别的cache中
+                        break;
+                    }
+                    case L2:
+                    {
+                        std::cout << "2";//根据strides[i].conf/strides.conf置信度来判断放到哪个级别的cache中
+                        break;
+                    }
+                    case L2R:
+                    {
+                        std::cout << "3";//根据strides[i].conf/strides.conf置信度来判断放到哪个级别的cache中
+                        break;
+                    }
+                    case R:
+                    {
+                        std::cout << "0" ;//根据strides[i].conf/strides.conf置信度来判断放到哪个级别的cache中
+                        break;
+                    }
+                }
+                std::cout << "}";
+                if(count == 6){
+                    count = 0;
+                    std::cout << std::endl;
+                }
+                count++;
+            }
+        }
+        std::cout <<std::endl;
+    }
   }
 #endif

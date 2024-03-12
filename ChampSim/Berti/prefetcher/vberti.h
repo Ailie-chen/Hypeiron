@@ -31,6 +31,7 @@
 //# define LAT_MASK                     (0xFFFF)
 # define ADDR_MASK                    (0xFFFFFF)
 
+
 // Confidence
 # define CONFIDENCE_MAX               (16) // 6 bits
 # define CONFIDENCE_INC               (1) // 6 bits

@@ -226,6 +226,8 @@ template <class T> class SetAssociativeCache {
         for (int i = 0; i < num_sets; i += 1)
             for (int j = 0; j < num_ways; j += 1)
                 entries[i][j].valid = false;
+        for (int max_index = num_sets - 1; max_index > 0; max_index >>= 1)
+            this->index_len += 1;
     }
 
     Entry *erase(uint64_t key) {
@@ -335,6 +337,7 @@ template <class T> class SetAssociativeCache {
     int num_ways;
     int num_sets;
     uint64_t past_region;
+    int index_len = 0; /* in bits */
     vector<vector<Entry>> entries;
     vector<unordered_map<uint64_t, int>> cams;
     int debug_level = 0;

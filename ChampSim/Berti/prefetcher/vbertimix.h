@@ -20,7 +20,7 @@
 // Mask
 # define MAX_HISTORY_IP               (8)
 # define MAX_PF                       (16)
-# define MAX_PF_LAUNCH                (2)
+# define MAX_PF_LAUNCH                (12)
 # define STRIDE_MASK                  (12)
 
 // Mask
@@ -75,6 +75,10 @@ typedef struct VBerti {
     stride_t *stride;
     uint64_t conf;
     uint64_t total_used;
+    bool issue;
+    bool cold_issue;
+    uint64_t access;
+    uint64_t pc;
 } vberti_t; // This struct is the history table
 
 typedef struct shadow_cache {
@@ -130,3 +134,5 @@ void vberti_increase_conf_ip(uint64_t tag, uint32_t cpu);
 void find_and_update(uint32_t cpu, uint64_t latency, uint64_t tag, 
         uint64_t cycle, uint64_t line_addr);
 #endif
+
+void print_stride_table(uint32_t cpu, bool all_print, uint64_t key);

@@ -7,7 +7,7 @@
 # define TABLE_SET_MASK               (0x7)
 
 # define BERTI_TABLE_SIZE             (16)
-# define BERTI_TABLE_STRIDE_SIZE      (16)
+# define BERTI_TABLE_STRIDE_SIZE      (8)
 
 # elif defined(SIZE_2X)
 // 2xMICRO Size

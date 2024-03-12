@@ -824,9 +824,9 @@ vector<MLOP> prefetchers;
 
 void CACHE::l1d_prefetcher_initialize() {
     /*=== MLOP Settings ===*/
-    const int BLOCKS_IN_CACHE = CACHE::NUM_SET * CACHE::NUM_WAY;
-    const int BLOCKS_IN_ZONE = PAGE_SIZE / BLOCK_SIZE;
-    const int AMT_SIZE = 32 * BLOCKS_IN_CACHE / BLOCKS_IN_ZONE; /* size of access map table */
+    const int BLOCKS_IN_CACHE = CACHE::NUM_SET * CACHE::NUM_WAY;//64*12
+    const int BLOCKS_IN_ZONE = PAGE_SIZE / BLOCK_SIZE;//64
+    const int AMT_SIZE = 32 * BLOCKS_IN_CACHE / BLOCKS_IN_ZONE; /* size of access map table *///32*64*12/64 = 32*12
 
     /* maximum possible prefetch degree (the actual prefetch degree is usually much smaller) */
     const int PREFETCH_DEGREE = 16;

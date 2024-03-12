@@ -21,7 +21,9 @@ uint8_t warmup_flag_l1 = 0;
 //Neelu: These are for 124KB Bingo
 #define SIZE_OF_PHT 16*1024
 #define WAYS_IN_PHT 16
-
+void notify_prefetch(uint64_t addr, uint64_t tag, uint32_t cpu, uint64_t cycle)
+{
+}
 
 namespace L1D_PREF {
 

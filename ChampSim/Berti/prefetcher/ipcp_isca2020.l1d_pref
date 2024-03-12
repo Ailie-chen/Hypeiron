@@ -53,7 +53,9 @@ vice versa in the cache's MSHR as, if the prefetch would've been on time, the de
 #else
 #define SIG_DP(x)
 #endif
-
+void notify_prefetch(uint64_t addr, uint64_t tag, uint32_t cpu, uint64_t cycle)
+{
+}
 class IP_TABLE_L1 {
   public:
     uint64_t ip_tag;					    
