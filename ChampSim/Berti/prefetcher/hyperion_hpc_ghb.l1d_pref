@@ -1,4 +1,3 @@
-
 #include "vbertimix_small.h"
 #include "bingo_frame.h"
 #define LANZAR_INT 8
@@ -104,7 +103,6 @@
 //uint64_t RR[NUM_CPUS][SIZE_RR] = {0};
 //uint64_t RR_cycle[NUM_CPUS][SIZE_RR] = {0};
 //uint64_t RR_dx[NUM_CPUS] = {0};
-
 bool spec_intructions_complete;
 struct PAGE_SETTING{
     const uint64_t REGION_SIZE = 32 * 1024;
@@ -140,7 +138,9 @@ struct PAGE_SETTING{
     const uint64_t PAGE_CONFIDENCE_MAX = 16;
     const uint64_t PAGE_LANZAR_INT = 8;
 
-
+    const int GHB_SIZE = 256;
+    const int PC_INDEX_SIZE = 16;
+    const int PAGE_INDEX_SIZE = 64;
 
     void print(){
             cerr  << "====================================================="<<endl;
@@ -485,6 +485,7 @@ uint8_t shadow_cache_latency(uint32_t cpu, uint64_t line_addr)
     return 0;
 }
 
+
 /******************************************************************************/
 /*                       History Table functions                               */
 /******************************************************************************/
@@ -495,22 +496,43 @@ class ghb_index_table:public LRUFullyAssociativeCache<int> {
         ghb_index_table(int size) : Super(size) {
             cerr<<"PatternAccululateTable sets: "<< num_sets<<" ways: "<<num_ways<<endl;
         }
-        int read(uint64_t index, int first_entry){
-            Entry *entry = Super::find(index);
+        int find(uint64_t tag){
+            Entry *entry = Super::find(tag);
             if(!entry){
-                return 0;
-            }
-            else{
+                return -1;
+            }else{
                 return entry->data;
             }
         }
+        void insert(uint64_t tag, int data){
+            Super::insert(tag,data);
+        }
+        void update(uint64_t tag, int data){
+            Entry *entry = Super::find(tag);
+            if(!entry){
+                return;
+            }else{
+                entry->data=data;
+                return;
+            }
+        }
+        void mru(uint64_t tag){
+            this->set_mru(tag);
+        }
+        void print_table(){
+            vector<Entry> valid_entries = Super::get_valid_entries();
+            for(int i = 0; i < valid_entries.size(); i++){
+                cout << valid_entries[i].tag << " " <<valid_entries[i].data << endl;
+            }
+        }
+
     private:
         uint64_t size;
 };
 struct global_history_entry{
+    uint64_t pc;
     uint64_t address;
-    uint64_t latency;
-    int lru;
+    uint64_t timestamp;
     int pc_next;
     int page_next;
 
@@ -519,153 +541,309 @@ struct global_history_entry{
 class ghb_history_table {
     typedef LRUFullyAssociativeCache<global_history_entry> Super;
     public:
-        ghb_history_table(int size, int max_len, int pc_index_size, int page_index_size) : ghb(this->size),max_len(this->max_len)
-        pc_index_table(pc_index_size), page_index_table(page_index_size) {
+        ghb_history_table(int size, int max_len, int pc_index_size, int page_index_size, int pattern_len):size(size),max_len(max_len),
+        pc_index_table(pc_index_size), page_index_table(page_index_size),pattern_len(pattern_len),ghb(max_len) {
             //max_len代表同一个PC或者page的能够拥有的最大长度的历史信息
             for(int i = 0; i < this->max_len; i++){
-                this->ghb[i].lru = this->max_len;
-                this->ghb[i].pc_next = i;
-                this->ghb[i].page_next = i;
+                this->ghb[i].pc = 0;
+                this->ghb[i].pc_next = this->max_len;
+                this->ghb[i].page_next = this->max_len;
+                this->ghb[i].address = 0;
+                this->ghb[i].timestamp = 0;
             }
+            this->tail = 0;
+            this->head = 0;
         }
-        int find(int first_entry, uint64_t block_number, uint64_t best_require_time, int stride[] ){
-            int i = 0;
-            int idx = first_entry;
-            while(is_entry(idx)){
-                if(ghb[idx].latency <= best_require_time){
-                    stride[i] = block_number - ghb[idx].address;
-                    i++; 
-                }
-
-                idx = ghb[idx].next;
-                if(idx == first_entry){
-                    return 1;
-                }
+        int find_pc_stride(uint64_t block_number, uint64_t pc, uint64_t latency, uint64_t cycle, int stride[] ){
+            block_number = block_number & ADDR_MASK;
+            int pc_head = this->pc_index_table.find(pc);
+            if(pc_head == -1 ){
+                return 0;
             }
-            return 0;            
-        }
-
-        int insert(int pc_first_entry, int page_first_entry, uint64_t block_number, uint64_t latency){
-
-            //在pc的这一链条上，插入的方式
-            int length = 0;
-            int idx = pc_first_entry;
-            if(is_entry(idx)){
-                while(is_entry(idx)){
-                    length++;
-                    if(this->ghb[idx].address == block_number){
-                        this->set_mru(first_entry);
-                        //如果原来已经有同样的地址了，则不管
-                        return pc_first_entry;
-                    }
-                    if(this->ghb[idx].pc_next == pc_first_entry){
-                        break;
-                    }else{
-                        idx = this->ghb[idx].pc_next;
+            this->pc_index_table.mru(pc);
+            if (cycle < latency) return 0;
+            cycle = cycle - latency;
+            int cnt = 0;
+            int pc_next = pc_head;
+            while(pc_next != this->max_len){
+                if(this->ghb[pc_next].timestamp < cycle){
+                    if((block_number - this->ghb[pc_next].address) != 0){
+                        stride[cnt] = block_number - this->ghb[pc_next].address;
+                        cnt = cnt + 1;
                     }
                 }
-                int victim_idx;
-                if(length >= this->max_len){     
+                pc_next = this->ghb[pc_next].pc_next;
+            }
+            return cnt;
+        }
 
-                    victim_idx = idx;
-                    victim_page = (ghb[idx].address >>(LOG2_BLOCKS_PER_PAGE));
-                    victim_pc = 
-
-                    this->ghb[idx].address = block_number;
-                    this->ghb[idx].latency = latency;
-                    if(in_page_chain(page_first_entry, idx)){
-                        this->set_pc_index_table(pc, idx);
-                        this->set_page_index_table(page,idx);
-                    }else{
-
+        int find_page_stride(uint64_t block_number, uint64_t latency, uint64_t cycle, int stride[] ){
+            uint64_t page_number = (block_number / this->pattern_len) & PAGE_MASK;
+            block_number = block_number & ADDR_MASK;
+            int page_head = this->page_index_table.find(page_number);
+            if(page_head == -1){
+                return 0;
+            }
+            this->page_index_table.mru(page_number);
+            if (cycle < latency) return 0;
+            cycle = cycle - latency;
+            int cnt = 0;
+            int page_next = page_head;
+            while(page_next != this->max_len) {
+                if(this->ghb[page_next].timestamp < cycle ){
+                    if(( block_number - this->ghb[page_next].address ) != 0){
+                        stride[cnt] = block_number - this->ghb[page_next].address;
+                        cnt = cnt + 1;
                     }
-                    this->set_mru(idx);
-                    return idx;
+                }
+                page_next =  this->ghb[page_next].page_next;
+            }
+            return cnt;
+        }
+
+        int insert(uint64_t pc,  uint64_t block_number, uint64_t timestamp){
+            if(this->debug_level == 1){
+                cout << "before_insert" << endl;
+                cout << "print_pc_index_table: tag data" << endl;
+                this->pc_index_table.print_table();
+                cout << "print_page_index_table: tag data" << endl;
+                this->page_index_table.print_table();
+                this->print_ghb();
+            }
+            uint64_t page_number = (block_number / this->pattern_len)&PAGE_MASK;
+            block_number = block_number & ADDR_MASK;
+            int pc_head;
+            int page_head;
+            pc_head = this->pc_index_table.find(pc);
+            if(this->pc_index_table.find(pc)==-1){
+                this->pc_index_table.insert(pc,this->max_len);
+            }
+            this->pc_index_table.mru(pc);
+
+            page_head = this->page_index_table.find(page_number);
+            if(page_head==-1){
+                this->page_index_table.insert(page_number,this->max_len);
+            }
+            this->page_index_table.mru(page_number);
+            //首先判断当前两个first_entry存在不存在
+            bool is_pc_exist = this->is_pc_exist(pc, pc_head);
+            bool is_page_exist = this->is_page_exist(block_number, page_head); 
+            if(!is_pc_exist && !is_page_exist){
+                int victim_idx = ghb_insert();
+
+                //插入新的项
+                this->ghb[victim_idx].pc = pc;
+                this->ghb[victim_idx].address = block_number;
+                this->ghb[victim_idx].timestamp = timestamp;
+                this->ghb[victim_idx].pc_next = this->max_len;
+                this->ghb[victim_idx].page_next = this->max_len;
+                
+                this->pc_index_table.update(pc,victim_idx);
+                this->page_index_table.update(page_number, victim_idx);
+
+            }else if(is_pc_exist && !is_page_exist){
+                int same_address_idx = this->address_in_pc(pc_head, block_number);
+                if( same_address_idx != -1){
+                    if(this->debug_level == 1){
+                        cout << "same pc address : block_number: " << block_number << " page_number " << page_number<< endl;
+                    }
+                    this->page_index_table.update(page_number, same_address_idx);
+                    this->ghb[same_address_idx].page_next = this->max_len;
                 }else{
-                    victim_idx = this->find_lru();
-                    if(ghb[victim_idx].next == victim_idx){
-                        
-                    }
+                    int victim_idx = ghb_insert();
+
+                    //插入新的项
+                    this->ghb[victim_idx].pc = pc;
+                    this->ghb[victim_idx].address = block_number;
+                    this->ghb[victim_idx].timestamp = timestamp;
+                    this->ghb[this->insert_in_pc(pc_head)].pc_next = victim_idx;
+                    this->ghb[victim_idx].pc_next = this->max_len;
+                    this->ghb[victim_idx].page_next = this->max_len;
+
+                    this->page_index_table.update(page_number, victim_idx);
                 }
+            }else if(!is_pc_exist && is_page_exist){
+                int same_address_idx = this->address_in_page(page_head, block_number);
+                if( same_address_idx != -1){
+                    if(this->debug_level == 1){
+                        cout << "same page address : block_number: " << block_number << " pc " << pc << endl;
+                    }
+                    this->pc_index_table.update(pc,same_address_idx);
+                    this->ghb[same_address_idx].pc_next = this->max_len;
+                }else{
+                    int victim_idx = ghb_insert();
 
-
+                    //插入新的项
+                    this->ghb[victim_idx].pc = pc;
+                    this->ghb[victim_idx].address = block_number;
+                    this->ghb[victim_idx].timestamp = timestamp;
+                    this->ghb[this->insert_in_page(page_head)].page_next = victim_idx;
+                    this->ghb[victim_idx].pc_next = this->max_len;
+                    this->ghb[victim_idx].page_next = this->max_len;
+                
+                    this->pc_index_table.update(pc,victim_idx);
+                }
+            }else{
+                int same_address_idx_pc = this->address_in_pc(pc_head, block_number);
+                int same_address_idx_page = this->address_in_page(page_head, block_number);
+                if(same_address_idx_pc != -1 && same_address_idx_page == -1){
+                    this->ghb[this->insert_in_page(page_head)].page_next = same_address_idx_pc;
+                    this->ghb[same_address_idx_pc].page_next = this->max_len;
+                }
+                else if(same_address_idx_pc == -1 && same_address_idx_page != -1){
+                    this->ghb[this->insert_in_pc(pc_head)].pc_next = same_address_idx_page;
+                    this->ghb[same_address_idx_page].pc_next = this->max_len;
+                }else if(same_address_idx_pc == -1 && same_address_idx_page == -1){
+                    int victim_idx = ghb_insert();
+                    //插入新的项
+                    this->ghb[victim_idx].pc = pc;
+                    this->ghb[victim_idx].address = block_number;
+                    this->ghb[victim_idx].timestamp = timestamp;
+                    this->ghb[this->insert_in_page(page_head)].page_next = victim_idx;
+                    this->ghb[this->insert_in_pc(pc_head)].pc_next = victim_idx;
+                    this->ghb[victim_idx].pc_next = this->max_len;
+                    this->ghb[victim_idx].page_next = this->max_len;
+                }
             }
+            if(this->debug_level == 1){
+                cout << "after_insert" << endl;
+                cout << "pc_index_table: tag data" << endl;
+                this->pc_index_table.print_table();
+                cout << "page_index_table: tag data" << endl;
+                this->page_index_table.print_table();
+                this->print_ghb();
+            }
+            return 1;
         }
 
-        
+        void set_debug_level(int debug_level){
+            this->debug_level = debug_level;
+        }
+    
     private:
         ghb_index_table pc_index_table;
         ghb_index_table page_index_table;
         int size;
         int max_len;
-        vector<global_history_entry> ghb;
-        bool is_entry(int idx){ return ((idx >=0) && (idx < this->max_len));}
-        void set_mru(int index){
-            for(int i = 0; i < this->max_len; i++){
-                int i_lru = this->ghb[i].lru;
-                if((i != index) && (i_lru <= this->ghb[index].lru) && (i_lru < this->max_len)){
-                    i_lru = i_lru ++;
-                }
-            }
-            this->ghb[index].lru = 1;
-        }
-        void find_lru(void){
-            for(int i = 0; i < this->max_len; i++){
-                int i_lru = this->ghb[i].lru;
-                if(i_lru == this->max_len){
-                    return i;
-                }
-            }
-        }
-        bool in_page_chain(int page_first_entry, int index){
-            int idx = page_first_entry;
-            while(is_entry(page_first_entry)){
-                if(this->ghb[idx].page_next == index){
-                    return true;
-                }else if(ghb[idx].page_next = page_first_entry){
-                    break;
-                }else{
-                    idx = this->ghb[idx].page_next;
-                }
-            }
-            return false;
-        }
-        bool in_pc_chain(int pc_first_entry, int index){
-            int idx = pc_first_entry;
-            while(is_entry(pc_first_entry)){
-                if(this->ghb[idx].pc_next == index){
-                    return true;
-                }else if(ghb[idx].pc_next = pc_first_entry){
-                    break;
-                }else{
-                    idx = this->ghb[idx].pc_next;
-                }
-            }
-            return false;
-        }
-        set_pc_index_table(uint64_t tag, int index)
-        {
-            Entry *entry = this->pc_index_table.find(index);
-            entry->data = index;
-        }
-        set_page_index_table(uint64_t tag, int index)
-        {
-            Entry *entry = this->page_index_table.find(index);
-            entry->data = index;
-        }
-};
+        std::vector<global_history_entry> ghb;
+        int tail;
+        int head;
+        int pattern_len;
+        int debug_level = 0;
 
-class GHB{
-    public:
-        GHB(int PC_NUM, int PAGE_NUM, int HIS_NUM):pc_num(PC_NUM),page_num(PAGE_NUM),his_num(HIS_NUM){
-
+        //判断当前的历史链中是否已经有当前地址了，如果有的话，返回这个地址所在条目的索引
+        int address_in_pc(int pc_head, uint64_t block_number){
+            int pc_next = pc_head;
+            while(pc_next != this->max_len){
+                if(this->ghb[pc_next].address == block_number){
+                    return pc_next;
+                }
+                pc_next = this->ghb[pc_next].pc_next;
+            }
+            return -1;
+        }
+        int address_in_page(int page_head, uint64_t block_number){
+            int page_next = page_head;
+            while(page_next != this->max_len){
+                if(this->ghb[page_next].address == block_number){
+                    return page_next;
+                }
+                page_next = this->ghb[page_next].page_next;
+            }
+            return -1;
         }
 
-    
+        //在已有的链表中找到当前历史链末端节点的索引
+        int insert_in_pc(int pc_head){
+            int pc_next = pc_head;
+            while(this->ghb[pc_next].pc_next != this->max_len){
+                pc_next = this->ghb[pc_next].pc_next;
+            }
+            return pc_next;
+        }
+        int insert_in_page(int page_head){
+            int page_next = page_head;
+            while(this->ghb[page_next].page_next != this->max_len){
+                page_next = this->ghb[page_next].page_next;
+            }
+            return page_next;
+        }
 
-    int pc_num;
-    int page_num;
-    int his_num;
+        //在pc或者page的历史链中挪去某一个节点，一般来讲，这个pc_head应该就是idx
+        void remove_pc_node(int pc_head, uint64_t idx){
+            int pc_next = pc_head;
+            while(pc_next != this->max_len){        
+                if(this->ghb[pc_next].pc_next == idx){
+                    this->ghb[pc_next].pc_next = this->ghb[idx].pc_next;
+                    return;
+                }
+                pc_next = this->ghb[pc_next].pc_next;
+            }
+
+            return;
+        }
+        void remove_page_node(int page_head, uint64_t idx){
+            int page_next = page_head;
+            while(page_next != this->max_len){        
+                if(this->ghb[page_next].page_next == idx){
+                    this->ghb[page_next].page_next = this->ghb[idx].page_next;
+                    return;
+                }
+                page_next = this->ghb[page_next].page_next;
+            }
+
+            return;
+        }
+       
+       //在ghb中找一个条目，同时更新head和tail，需要注意的是，这里的对被剔除的项的处理
+        int ghb_insert(){
+            int victim_idx;
+            victim_idx = this->tail;
+            this->tail = (this->tail+1)%this->max_len;
+            if(this->ghb[this->tail].timestamp != 0 && (this->tail == this->head))
+            {
+                this->head = (this->head+1)%this->max_len;
+            }
+
+            //处理被剔除的项
+            uint64_t victim_pc = this->ghb[victim_idx].pc;
+            int victim_pc_head = this->pc_index_table.find(victim_pc);
+            if(victim_pc_head != -1){
+                if(is_pc_exist(victim_pc_head, victim_pc)){
+                    remove_pc_node(victim_pc_head, victim_idx);
+                }
+            }
+            uint64_t victim_page = (this->ghb[victim_idx].address)>>this->pattern_len;
+            int victim_page_head = this->page_index_table.find(victim_page);
+            if(victim_page_head != -1){
+                if(is_page_exist(victim_page_head, victim_page)){
+                    remove_page_node(victim_page_head, victim_idx);
+                }
+            }
+            return victim_idx;
+        }
+
+        //判断当前index中记录的第一个索引是不是正确的
+        bool is_pc_exist(uint64_t pc, int pc_head){
+            return (pc_head != this->max_len && this->ghb[pc_head].pc== pc);
+        }
+        bool is_page_exist(uint64_t block_number, int page_head){
+            return (page_head != this->max_len &&((this->ghb[page_head].address / this->pattern_len)== (block_number/this->pattern_len)));
+        }
+
+            
+        void print_ghb(){
+            cout << "print_ghb: index, pc, address, timestamp, pc_next, page_next" << endl;
+            for (int i = this->head; i != this->tail; i = (i+1)%this->max_len){
+                cout << i << " "
+                << this->ghb[i].pc << " "
+                << this->ghb[i].address << " "
+                << this->ghb[i].timestamp << " "
+                << this->ghb[i].pc_next << " "
+                << this->ghb[i].page_next << " "
+                << endl;
+            } 
+        }
 };
 
 
@@ -1243,7 +1421,8 @@ class MIX {
         setting.PAGE_L1_THRESHOLD, setting.PAGE_L2_THRESHOLD, setting.PAGE_LLC_THRESHOLD, setting.PAGE_CONFIDENCE_MAX, setting.PAGE_LANZAR_INT),
         bat(setting.PC_ACCUMULATE_TABLE, setting.REGION_SIZE>>LOG2_BLOCK_SIZE, setting.ADDR_RECORD_NUMBER),
         bst(setting.PC_STRIDE_TABLE, setting.REGION_SIZE>>LOG2_BLOCK_SIZE, setting.PC_STRIDE_NUMBER, 
-        setting.PC_L1_THRESHOLD, setting.PC_L2_THRESHOLD, setting.PC_LLC_THRESHOLD, setting.PAGE_CONFIDENCE_MAX, setting.PAGE_LANZAR_INT)
+        setting.PC_L1_THRESHOLD, setting.PC_L2_THRESHOLD, setting.PC_LLC_THRESHOLD, setting.PAGE_CONFIDENCE_MAX, setting.PAGE_LANZAR_INT),
+        ghb(setting.GHB_SIZE, setting.GHB_SIZE, setting.PC_INDEX_SIZE, setting.PAGE_INDEX_SIZE, setting.REGION_SIZE>>LOG2_BLOCK_SIZE)
         {   
         }
     
@@ -1293,11 +1472,11 @@ class MIX {
         // block_number = block_number&PAGE_MASK ;
         
 
-        if (this->debug_level >= 2) {
-            uint64_t region_number = (block_number / this->pattern_len)&PAGE_MASK;
-            int region_offset = block_number % this->pattern_len;    
-            cerr << "[MIX] cache fill(block_number: "  << block_number << ", region_number:" << region_number <<" region_offset: " << region_offset << ", latency: " << latency << " )" << endl;
-        }
+        // if (this->debug_level >= 2) {
+        //     uint64_t region_number = (block_number / this->pattern_len)&PAGE_MASK;
+        //     int region_offset = block_number % this->pattern_len;    
+        //     cerr << "[MIX] cache fill(block_number: "  << block_number << ", region_number:" << region_number <<" region_offset: " << region_offset << ", latency: " << latency << " )" << endl;
+        // }
         update_stride(block_number, pc_tag, latency, cycle);
         
     }
@@ -1314,8 +1493,8 @@ class MIX {
         
         if (this->debug_level >= 2) {
             uint64_t cycle = current_core_cycle[cpu] & TIME_MASK;
-            cerr << endl  << "[MIX] access(block_number: "  << block_number << ", region_number:" << region_number <<" region_offset: " << region_offset <<  " )" << endl;
-            cerr << "[MIX] access "<<" cache_hit: "   << (cache_hit==1) <<" pf: " << (shadow_cache_is_pf(cpu, block_number) == 1 )<<", cycle "<< cycle  << endl;
+            cerr << endl  << "[MIX] access(block_number: "  << block_number << ", region_number:" << region_number <<" pc: " << pc_tag <<  " )" << endl;
+            //cerr << "[MIX] access "<<" cache_hit: "   << (cache_hit==1) <<" pf: " << (shadow_cache_is_pf(cpu, block_number) == 1 )<<", cycle "<< cycle  << endl;
             // cerr<<" rate: "<<rate<< endl;
         }
 
@@ -1323,21 +1502,23 @@ class MIX {
         if (!cache_hit){
             if(this->debug_level >= 2)
             {
-                // std::cout << "M" << std::endl;
+                std::cout << "M" << std::endl;
             }
             uint64_t cycle = current_core_cycle[cpu] & TIME_MASK;
             latency_table_add(line_addr, pc_tag, cpu, 1);
+            ghb.insert(pc_tag, block_number,cycle);
             pat.insert(block_number, cycle);
             bat.insert(block_number,pc_tag, cycle);
         }else if (cache_hit && shadow_cache_is_pf(cpu, line_addr)){
             if(this->debug_level >= 2)
             {
-                // std::cout << "PH" << std::endl;
+                std::cout << "PH" << std::endl;
             }
             uint64_t cycle = current_core_cycle[cpu] & TIME_MASK;
             uint64_t latency = shadow_cache_latency(cpu, line_addr);
             shadow_cache_pf(cpu, line_addr);
-            update_stride(block_number, pc_tag,latency, cycle);  
+            update_stride(block_number, pc_tag,latency, cycle); 
+            ghb.insert(pc_tag, block_number,cycle); 
             pat.insert(block_number, cycle);
             bat.insert(block_number,pc_tag, cycle);    
             
@@ -1346,7 +1527,7 @@ class MIX {
         }else{
             if(this->debug_level >= 2)
             {
-                // std::cout << "H" << std::endl;
+                std::cout << "H" << std::endl;
             }
             shadow_cache_pf(cpu, line_addr);
         }
@@ -1368,11 +1549,12 @@ class MIX {
 
 
     void set_debug_level(int debug_level) { 
-        this->debug_level = debug_level; 
+        this->debug_level = 2; 
         pat.set_debug_level(debug_level);
         pst.set_debug_level(debug_level);
         bat.set_debug_level(debug_level);
         bst.set_debug_level(debug_level);
+        ghb.set_debug_level(1);
     }
     
     private:
@@ -1383,6 +1565,7 @@ class MIX {
         PCAccululateTable bat;
         PCStrideTable bst;
         int debug_level = 0;
+        ghb_history_table ghb;
 
 };
 
@@ -1405,7 +1588,7 @@ void CACHE::l1d_prefetcher_initialize()
     std::cout << "BERTI Stride Size: " << BERTI_TABLE_STRIDE_SIZE << std::endl;
     
     for(int i =0; i<NUM_CPUS; i++){
-        prefetchers[i].set_debug_level(0);
+        prefetchers[i].set_debug_level(1);
     }
     spec_intructions_complete = false;
 }
