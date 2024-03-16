@@ -1221,7 +1221,7 @@ void CACHE::l1d_prefetcher_initialize()
     std::cout << "BERTI Stride Size: " << BERTI_TABLE_STRIDE_SIZE << std::endl;
     
     for(int i =0; i<NUM_CPUS; i++){
-        prefetchers[i].set_debug_level(2);
+        prefetchers[i].set_debug_level(0);
     }
     spec_intructions_complete = false;
 }
@@ -1234,7 +1234,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
     if(warmup_complete[cpu] && warmup_flag_l1 == 0){
         warmup_flag_l1 = 1;
         for(int i =0; i<NUM_CPUS; i++){
-            prefetchers[i].set_debug_level(2);
+            prefetchers[i].set_debug_level(0);
         }
     }
 
@@ -1293,7 +1293,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
     if(conf_stride_page.size() > 0){
         for ( ; j <conf_stride_page.size(); j++ ) {
 
-            if( page_launched >= setting.PAGE_MAX_PF_LAUNCH_S   ){
+            if( (page_launched >= setting.PAGE_MAX_PF_LAUNCH_S) || ((page_launched + berti_launched) >= setting.ALL_MAX_PF)  ){
                 break;
             }
 

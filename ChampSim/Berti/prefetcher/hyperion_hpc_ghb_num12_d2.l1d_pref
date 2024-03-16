@@ -33,7 +33,8 @@
 # elif defined(SIZE_6)
 # define PAGE_ACCUMULATE_TABLES     (32)
 # define OFFSET_RECORD_NUMBERS      (8)
-# define PAGE_STRIDE_TABLES         (64)
+// # define PAGE_STRIDE_TABLES         (64)
+# define PAGE_STRIDE_TABLE_BITS     (6)
 # define PAGE_STRIDE_NUMBERS        (8)
 # elif defined(SIZE_7)
 # define PAGE_ACCUMULATE_TABLES     (32)
@@ -108,12 +109,14 @@ struct PAGE_SETTING{
     const uint64_t REGION_SIZE = 32 * 1024;
     const uint64_t PAGE_ACCUMULATE_TABLE=PAGE_ACCUMULATE_TABLES;
     const uint64_t OFFSET_RECORD_NUMBER=OFFSET_RECORD_NUMBERS;
-    const uint64_t PAGE_STRIDE_TABLE=PAGE_STRIDE_TABLES;
+    // const uint64_t PAGE_STRIDE_TABLE=PAGE_STRIDE_TABLES;
+    const uint64_t PAGE_STRIDE_TABLE_BIT=PAGE_STRIDE_TABLE_BITS;
     const uint64_t PAGE_STRIDE_NUMBER=PAGE_STRIDE_NUMBERS;
 
     const uint64_t PC_ACCUMULATE_TABLE=16;
     const uint64_t ADDR_RECORD_NUMBER=8;
-    const uint64_t PC_STRIDE_TABLE=16;
+    // const uint64_t PC_STRIDE_TABLE=16;
+    const uint64_t PC_STRIDE_TABLE_BIT=16;
     const uint64_t PC_STRIDE_NUMBER=8;
 
     const uint64_t STRIDE_COUNT_TABLE=32;
@@ -134,7 +137,7 @@ struct PAGE_SETTING{
     const int MAX_PF_S = 16;
     const int MAX_PF_LAUNCH_S = 6;
     const int PAGE_MAX_PF_LAUNCH_S = 8;
-    const int ALL_MAX_PF = 14;
+    const int ALL_MAX_PF = 12;
     const uint64_t PAGE_CONFIDENCE_MAX = 16;
     const uint64_t PAGE_LANZAR_INT = 8;
 
@@ -152,6 +155,20 @@ struct PAGE_SETTING{
 
 
 uint8_t warmup_flag_l1 = 0;
+
+
+uint64_t hash_index(uint64_t key, uint16_t len){
+    if (len == 0)
+        return key;
+    uint64_t range = ((1 << len) - 1);
+    uint64_t tag = 0;
+    while(key >= range){
+        tag = tag^(key & range);
+        key = (key >> len);
+    }
+    tag ^= key;
+    return tag;
+}
 
 void notify_prefetch(uint64_t addr, uint64_t tag, uint32_t cpu, uint64_t cycle)
 {
@@ -1039,13 +1056,14 @@ struct stride_info {
     uint64_t lru;
 };
 
-class PageStrideTableData {
+class StrideTableData {
   public:
     // vector<uint64_t> strides;
     // vector<uint64_t> conf;
     vector<stride_info> stride_conf;
     // vector<uint64_t> train_stride;
     uint64_t total;
+    bool is_pc;
 };
 
 bool compareByConf(const stride_info& s1, const stride_info& s2) {
@@ -1068,12 +1086,12 @@ bool compareByOnlyConf(const stride_info& s1, const stride_info& s2) {
     return s1.conf > s2.conf;
 }
 
-class PageStrideTable : public LRUFullyAssociativeCache<PageStrideTableData> {
-    typedef LRUFullyAssociativeCache<PageStrideTableData> Super;
+class StrideTable : public DirectMappedCache<StrideTableData> {
+    typedef DirectMappedCache<StrideTableData> Super;
     public:
-        PageStrideTable(int size, uint64_t pattern_len, uint64_t stride_num, float l1_thres, float l2_thres, float llc_thres, 
-           int page_confident_max, int page_first) : Super(size) ,
-         pattern_len(pattern_len),stride_num(stride_num),
+        StrideTable(int size_bit, uint64_t pattern_len, uint64_t stride_num, float l1_thres, float l2_thres, float llc_thres, 
+           int page_confident_max, int page_first) : Super((1<<size_bit)) ,
+         pattern_len(pattern_len),stride_num(stride_num), size_bit(size_bit),
          l1_thres(l1_thres), l2_thres(l2_thres), llc_thres(llc_thres),
          page_confident_max(page_confident_max), page_first(page_first)
         //  , page_l1_thres(page_l1_thres),  page_l2_thres(page_l2_thres), page_l3_thres(page_l3_thres)
@@ -1081,36 +1099,36 @@ class PageStrideTable : public LRUFullyAssociativeCache<PageStrideTableData> {
             cerr<<"PatternAccululateTable sets: "<< num_sets<<" ways: "<<num_ways<<endl;
         }
 
-        int add_stride_conf(uint64_t block_number, int s){
-            uint64_t region_num =  (block_number / this->pattern_len)&PAGE_MASK;
-            int region_offset   =  block_number % this->pattern_len;
-            Entry *entry = Super::find(region_num);
-
-            if (!entry){
-                vector<stride_info> add_stride;
-                add_stride.push_back({s, 1, NO_PREFETCH, 1});
-                Entry victim =  Super::insert(region_num, {add_stride, 1});
-                this->set_mru(region_num);
-                if(this->debug_level>=2){
-                    cerr  << "[PST] insert page : "  << " page number: "<< region_num  << ", insert stride: " << s  <<endl;
-                }   
-                return 0;
-            }else{
-                this->set_mru(region_num);
-                for ( auto& pair : entry->data.stride_conf) {
+        //is_pc: 1:pc 0:page
+        int add_stride_conf(uint64_t block_number, uint64_t pc_tag, bool is_pc, int s){
+            uint64_t region_number =  (block_number / this->pattern_len)&PAGE_MASK;
+            int region_offset   =  block_number % this->pattern_len;         
+            if(is_pc){
+                pc_tag = hash_index(pc_tag,this->size_bit);
+                Entry *entry = Super::find(pc_tag);
+                if(!entry || (entry->data.is_pc == false)){
+                    vector<stride_info> add_stride;
+                    add_stride.push_back({s, 1, NO_PREFETCH, 1});
+                    Entry victim =  Super::insert(pc_tag, {add_stride, 1,true});
+                    if(this->debug_level>=2){
+                        cerr  << "[PST] insert page : "  << " page number: "<< pc_tag  << ", insert stride: " << s  <<endl;
+                    }   
+                    return 0;
+                }else{
+                    for ( auto& pair : entry->data.stride_conf) {
                     if(pair.stride == s){
                         pair.conf = pair.conf+1;
                         pair.lru = entry->data.total;
                         if(pair.conf > entry->data.total){
                             if(this->debug_level>=2){
-                                cerr  << "[PST] insert page : "  << " page number: "<< region_num  << ", total: " << entry->data.total <<" conf: "<<pair.conf <<endl;
+                                cerr  << "[PCST] insert pc : "  << "pc_tag: "<< pc_tag  << ", total: " << entry->data.total <<" conf: "<<pair.conf <<endl;
                                 assert(0);
                             }                            
                         }
 
                         // assert(pair.conf <= entry->data.total);
                         if(this->debug_level>=2){
-                            cerr  << "[PST] insert page : "  << " page number: "<< region_num  << ", accumulate stride: " << s  <<endl;
+                            cerr  << "[PCST] insert pc : "  << " pc_tag: "<< pc_tag  << ", accumulate stride: " << s  <<endl;
                         }
                         return 0;
                     }
@@ -1121,95 +1139,211 @@ class PageStrideTable : public LRUFullyAssociativeCache<PageStrideTableData> {
                 }
                 entry->data.stride_conf.push_back({s,1, NO_PREFETCH, entry->data.total});
                 return 0;
+                }
+            }else{
+                uint64_t region_num= hash_index(region_number, this->size_bit);
+                Entry *entry = Super::find(region_num);
+                if(!entry || (entry->data.is_pc == true)){
+                    vector<stride_info> add_stride;
+                    add_stride.push_back({s, 1, NO_PREFETCH, 1});
+                    Entry victim =  Super::insert(region_num, {add_stride, 1,false});
+                    if(this->debug_level>=2){
+                        cerr  << "[PST] insert page : "  << " page number: "<< region_num  << ", insert stride: " << s  <<endl;
+                    }   
+                    return 0;
+                }
+                else{
+                    for ( auto& pair : entry->data.stride_conf) {
+                        if(pair.stride == s){
+                            pair.conf = pair.conf+1;
+                            pair.lru = entry->data.total;
+                            if(pair.conf > entry->data.total){
+                                if(this->debug_level>=2){
+                                    cerr  << "[PST] insert page : "  << " page number: "<< region_num  << ", total: " << entry->data.total <<" conf: "<<pair.conf <<endl;
+                                    assert(0);
+                                }                            
+                            }
+
+                            // assert(pair.conf <= entry->data.total);
+                            if(this->debug_level>=2){
+                                cerr  << "[PST] insert page : "  << " page number: "<< region_num  << ", accumulate stride: " << s  <<endl;
+                            }
+                            return 0;
+                        }
+                    }
+                    std::sort(entry->data.stride_conf.begin(), entry->data.stride_conf.end(), compareByConf);
+                    if(entry->data.stride_conf.size() >= this->stride_num){
+                        entry->data.stride_conf.pop_back();
+                    }
+                    entry->data.stride_conf.push_back({s,1, NO_PREFETCH, entry->data.total});
+                    return 0;
+                }
             }
         }
 
-        void add_page_conf(uint64_t block_number){
-            uint64_t region_num =  (block_number / this->pattern_len)&PAGE_MASK;
+        void add_page_conf(uint64_t block_number, uint64_t pc_tag, bool is_pc){
+            uint64_t region_number =  (block_number / this->pattern_len)&PAGE_MASK;
             int region_offset   =  block_number % this->pattern_len;
-            Entry *entry = Super::find(region_num);
-            if (entry){
-                if(this->debug_level>=2){
-                    cerr  << "[PST] add page count: "  << " page number: "<< region_num  << ", total: " << entry->data.total <<endl;
-                }
-                entry->data.total = entry->data.total + 1;
-                if(entry->data.total == page_confident_max){
-                    for ( auto& pair : entry->data.stride_conf) {
-                        float conf_rate = 1.0*pair.conf/entry->data.total ;
-                        if( conf_rate > l1_thres ){
-                            pair.prefetch_level = L1;
-                        }else if(conf_rate > l2_thres){
-                            pair.prefetch_level = L2;
-                        }else if(conf_rate > llc_thres){
-                            pair.prefetch_level = L2R;
+            if(is_pc){
+                pc_tag = hash_index(pc_tag,this->size_bit);
+                Entry *entry = Super::find(pc_tag);
+                if(entry && (entry->data.is_pc==true)){
+                     if(this->debug_level>=2){
+                        cerr  << "[PCST] add page count: "  << " pc_tag: "<< pc_tag  << ", total: " << entry->data.total <<endl;
+                    }
+                    entry->data.total = entry->data.total + 1;
+                    if(entry->data.total == page_confident_max){
+                        for ( auto& pair : entry->data.stride_conf) {
+                            float conf_rate = 1.0*pair.conf/entry->data.total ;
+                            if( conf_rate > l1_thres ){
+                                pair.prefetch_level = L1;
+                            }else if(conf_rate > l2_thres){
+                                pair.prefetch_level = L2;
+                            }else if(conf_rate > llc_thres){
+                                pair.prefetch_level = L2R;
+                            }
+                            else{
+                                pair.prefetch_level = NO_PREFETCH;
+                            }
+                            if(this->debug_level>=2){
+                                cerr  << "[PCST] add_page_conf: "  << " pc_tag: "<< pc_tag  << ", stride: " << pair.stride <<", conf: "<< pair.conf<<" level: "<<pair.prefetch_level <<endl;
+                            }
+                            pair.conf = 0;
+                            pair.lru = 0;
                         }
-                        else{
-                            pair.prefetch_level = NO_PREFETCH;
+                        entry->data.total = 1;
+                    }
+                }
+            }else{
+                uint64_t region_num= hash_index(region_number, this->size_bit);
+                Entry *entry = Super::find(region_num);
+                if(entry && (entry->data.is_pc==false)){
+                    if(this->debug_level>=2){
+                        cerr  << "[PST] add page count: "  << " page number: "<< region_num  << ", total: " << entry->data.total <<endl;
+                    }
+                    entry->data.total = entry->data.total + 1;
+                    if(entry->data.total == page_confident_max){
+                        for ( auto& pair : entry->data.stride_conf) {
+                            float conf_rate = 1.0*pair.conf/entry->data.total ;
+                            if( conf_rate > l1_thres ){
+                                pair.prefetch_level = L1;
+                            }else if(conf_rate > l2_thres){
+                                pair.prefetch_level = L2;
+                            }else if(conf_rate > llc_thres){
+                                pair.prefetch_level = L2R;
+                            }
+                            else{
+                                pair.prefetch_level = NO_PREFETCH;
+                            }
+                            if(this->debug_level>=2){
+                                cerr  << "[PST] add_page_conf: "  << " page number: "<< region_num  << ", stride: " << pair.stride <<", conf: "<< pair.conf<<" level: "<<pair.prefetch_level <<endl;
+                            }
+                            pair.conf = 0;
+                            pair.lru = 0;
+                        }
+                        entry->data.total = 1;
+                    }
+                }
+            }
+        }
+
+        vector<stride_info> get_conf_stride(uint64_t block_number, uint64_t pc_tag, bool is_pc){
+            vector<stride_info> conf_stride;
+            uint64_t region_number =  (block_number / this->pattern_len)&PAGE_MASK;
+            int region_offset   =  block_number % this->pattern_len;      
+            if(is_pc){
+                pc_tag = hash_index(pc_tag,this->size_bit);
+                Entry *entry = Super::find(pc_tag);
+                    if (!entry || (entry->data.is_pc == false)){
+                        // return 0;
+                        if(this->debug_level>=2){
+                            cerr  << "[PCST] get conf stride: "  << " No this pc_tag"<<endl;
+                        }
+                        return conf_stride;
+                    }else{
+                        std::sort(entry->data.stride_conf.begin(), entry->data.stride_conf.end(), compareByConf);
+                        // cerr  << "[PST] get conf stride: "  << " page number: "<< region_num <<", size: " << entry->data.stride_conf.size() <<" total: "<< entry->data.total <<endl;
+                        for ( auto& pair : entry->data.stride_conf) {
+                            if(pair.stride!=0 && pair.prefetch_level < NO_PREFETCH){
+                                conf_stride.push_back({pair.stride, pair.conf, pair.prefetch_level});
+                            }
+                        }
+
+                        if( conf_stride.size() ==0 && entry->data.total >= page_first){
+                            std::sort(entry->data.stride_conf.begin(), entry->data.stride_conf.end(), compareByOnlyConf);
+                            for ( auto& pair : entry->data.stride_conf) {
+                                float conf_rate = 1.0*pair.conf/entry->data.total ;
+                                if(pair.stride != 0){
+                                    if( conf_rate > 0.8 ){
+                                        conf_stride.push_back({pair.stride, pair.conf, L1});
+                                    }else if(conf_rate > 0.35){
+                                        conf_stride.push_back({pair.stride, pair.conf, L2});
+                                    }else{
+                                        break;
+                                    }
+                                }
+                            }
                         }
                         if(this->debug_level>=2){
-                            cerr  << "[PST] add_page_conf: "  << " page number: "<< region_num  << ", stride: " << pair.stride <<", conf: "<< pair.conf<<" level: "<<pair.prefetch_level <<endl;
+                            cerr  << "[PCST] get conf stride: ";
+                            for ( auto& pair : conf_stride) {
+                                cerr << pair.stride << " ";
+                            }
+                            cerr << endl;
                         }
-                        pair.conf = 0;
-                        pair.lru = 0;
+                        return conf_stride;
                     }
-                    entry->data.total = 1;
-                }
-            }
-        }
-
-        vector<stride_info> get_conf_stride(uint64_t block_number){
-            uint64_t region_num =  (block_number / this->pattern_len)&PAGE_MASK;
-            int region_offset   =  block_number % this->pattern_len;
-            vector<stride_info> conf_stride;
-            Entry *entry = Super::find(region_num);
-            if (!entry){
-                // return 0;
-                 if(this->debug_level>=2){
-                    cerr  << "[PST] get conf stride: "  << " No this page"<<endl;
-                }
-
-
-                // cerr  << "[PST] get conf stride: "  << " No this page"<<endl;
-                return conf_stride;
+    
             }else{
-                std::sort(entry->data.stride_conf.begin(), entry->data.stride_conf.end(), compareByConf);
-                // cerr  << "[PST] get conf stride: "  << " page number: "<< region_num <<", size: " << entry->data.stride_conf.size() <<" total: "<< entry->data.total <<endl;
-                for ( auto& pair : entry->data.stride_conf) {
-                    if(pair.stride!=0 && pair.prefetch_level < NO_PREFETCH){
-                        conf_stride.push_back({pair.stride, pair.conf, pair.prefetch_level});
+                uint64_t region_num= hash_index(region_number, this->size_bit);
+                Entry *entry = Super::find(region_num);       
+                if (!entry || (entry->data.is_pc == true)){
+                    // return 0;
+                    if(this->debug_level>=2){
+                        cerr  << "[PST] get conf stride: "  << " No this page"<<endl;
                     }
-                }
-
-                if( conf_stride.size() ==0 && entry->data.total >= page_first){
-                    std::sort(entry->data.stride_conf.begin(), entry->data.stride_conf.end(), compareByOnlyConf);
+                    return conf_stride;
+                }else{
+                    std::sort(entry->data.stride_conf.begin(), entry->data.stride_conf.end(), compareByConf);
                     for ( auto& pair : entry->data.stride_conf) {
-                        float conf_rate = 1.0*pair.conf/entry->data.total ;
-                        if( conf_rate > (l1_thres+0.15) ){
-                            conf_stride.push_back({pair.stride, pair.conf, L1});
-                        }else if(conf_rate > (l2_thres+0.15)){
-                            conf_stride.push_back({pair.stride, pair.conf, L2});
-                        }else{
-                            break;
+                        if(pair.stride!=0 && pair.prefetch_level < NO_PREFETCH){
+                            conf_stride.push_back({pair.stride, pair.conf, pair.prefetch_level});
                         }
                     }
-                }
-                if(this->debug_level>=2){
-                    cerr  << "[PST] get conf stride: ";
-                    for ( auto& pair : conf_stride) {
-                        cerr << pair.stride << " ";
+
+                    if( conf_stride.size() ==0 && entry->data.total >= page_first){
+                        std::sort(entry->data.stride_conf.begin(), entry->data.stride_conf.end(), compareByOnlyConf);
+                        for ( auto& pair : entry->data.stride_conf) {
+                            float conf_rate = 1.0*pair.conf/entry->data.total ;
+                            if( conf_rate > (l1_thres+0.15) ){
+                                conf_stride.push_back({pair.stride, pair.conf, L1});
+                            }else if(conf_rate > (l2_thres+0.15)){
+                                conf_stride.push_back({pair.stride, pair.conf, L2});
+                            }else{
+                                break;
+                            }
+                        }
                     }
-                    cerr << endl;
+                    if(this->debug_level>=2){
+                        cerr  << "[PST] get conf stride: ";
+                        for ( auto& pair : conf_stride) {
+                            cerr << pair.stride << " ";
+                        }
+                        cerr << endl;
+                    }
+                    return conf_stride;
                 }
-                return conf_stride;
-            }
+            }     
         }
     private:
         uint64_t pattern_len;
         uint64_t stride_num;
+        uint64_t size_bit;
         float l1_thres, l2_thres, llc_thres;
         uint64_t page_confident_max, page_first; 
         // float   page_l1_thres, page_l2_thres, page_l3_thres;
 };
+
 
 struct PCAccInfo{
     uint64_t addr;
@@ -1324,163 +1458,6 @@ class PCAccululateTable : public LRUFullyAssociativeCache<PCAccululateTableData>
         uint64_t pattern_len;
         uint64_t addr_number;
 };
-class PCStrideTableData {
-  public:
-    // vector<uint64_t> strides;
-    // vector<uint64_t> conf;
-    vector<stride_info> stride_conf;
-    // vector<uint64_t> train_stride;
-    uint64_t total;
-};
-class PCStrideTable : public LRUFullyAssociativeCache<PCStrideTableData> {
-    typedef LRUFullyAssociativeCache<PCStrideTableData> Super;
-    public:
-        PCStrideTable(int size, uint64_t pattern_len, uint64_t stride_num, float l1_thres, float l2_thres, float llc_thres, 
-           int page_confident_max, int page_first) : Super(size) ,
-         pattern_len(pattern_len),stride_num(stride_num),
-         l1_thres(l1_thres), l2_thres(l2_thres), llc_thres(llc_thres),
-         page_confident_max(page_confident_max), page_first(page_first)
-        //  , page_l1_thres(page_l1_thres),  page_l2_thres(page_l2_thres), page_l3_thres(page_l3_thres)
-        {
-            cerr<<"PatternAccululateTable sets: "<< num_sets<<" ways: "<<num_ways<<endl;
-        }
-
-        int add_stride_conf(uint64_t block_number,uint64_t pc_tag, int s){
-            Entry *entry = Super::find(pc_tag);
-
-            if (!entry){
-                vector<stride_info> add_stride;
-                add_stride.push_back({s, 1, NO_PREFETCH, 1});
-                Entry victim =  Super::insert(pc_tag, {add_stride, 1});
-                this->set_mru(pc_tag);
-                if(this->debug_level>=2){
-                    cerr  << "[PCST] insert pc : "  << " pc_tag: "<< pc_tag << ", insert stride: " << s  <<endl;
-                }   
-                return 0;
-            }else{
-                this->set_mru(pc_tag);
-                for ( auto& pair : entry->data.stride_conf) {
-                    if(pair.stride == s){
-                        pair.conf = pair.conf+1;
-                        pair.lru = entry->data.total;
-                        if(pair.conf > entry->data.total){
-                            if(this->debug_level>=2){
-                                cerr  << "[PCST] insert pc : "  << "pc_tag: "<< pc_tag  << ", total: " << entry->data.total <<" conf: "<<pair.conf <<endl;
-                                assert(0);
-                            }                            
-                        }
-
-                        // assert(pair.conf <= entry->data.total);
-                        if(this->debug_level>=2){
-                            cerr  << "[PCST] insert pc : "  << " pc_tag: "<< pc_tag  << ", accumulate stride: " << s  <<endl;
-                        }
-                        return 0;
-                    }
-                }
-                // if(entry->data.stride_conf.size() > this->stride_num ){
-                //     entry->data.stride_conf.pop_back();
-                // }else if(entry->data.stride_conf.size() == this->stride_num && (entry->data.stride_conf[entry->data.stride_conf.size()].prefetch_level == L1)){
-                //    return 0;
-                // }
-                // else if(entry->data.stride_conf.size() == this->stride_num && (entry->data.stride_conf[entry->data.stride_conf.size()].prefetch_level != L1)){
-                //     entry->data.stride_conf.pop_back();
-                //     entry->data.stride_conf.push_back({s,1, NO_PREFETCH, entry->data.total});
-                // }else{
-                //    entry->data.stride_conf.push_back({s,1, NO_PREFETCH, entry->data.total}); 
-                // }
-                std::sort(entry->data.stride_conf.begin(), entry->data.stride_conf.end(), compareByConf);
-                if(entry->data.stride_conf.size() >= this->stride_num){
-                    entry->data.stride_conf.pop_back();
-                }
-                entry->data.stride_conf.push_back({s,1, NO_PREFETCH, entry->data.total});
-                return 0;
-            }
-        }
-
-        void add_page_conf(uint64_t block_number, uint64_t pc_tag){
-            Entry *entry = Super::find(pc_tag);
-            if (entry){
-                if(this->debug_level>=2){
-                    cerr  << "[PCST] add page count: "  << " pc_tag: "<< pc_tag  << ", total: " << entry->data.total <<endl;
-                }
-                entry->data.total = entry->data.total + 1;
-                if(entry->data.total == page_confident_max){
-                    for ( auto& pair : entry->data.stride_conf) {
-                        float conf_rate = 1.0*pair.conf/entry->data.total ;
-                        if( conf_rate > l1_thres ){
-                            pair.prefetch_level = L1;
-                        }else if(conf_rate > l2_thres){
-                            pair.prefetch_level = L2;
-                        }else if(conf_rate > llc_thres){
-                            pair.prefetch_level = L2R;
-                        }
-                        else{
-                            pair.prefetch_level = NO_PREFETCH;
-                        }
-                        if(this->debug_level>=2){
-                            cerr  << "[PCST] add_page_conf: "  << " pc_tag: "<< pc_tag  << ", stride: " << pair.stride <<", conf: "<< pair.conf<<" level: "<<pair.prefetch_level <<endl;
-                        }
-                        pair.conf = 0;
-                        pair.lru = 0;
-                    }
-                    entry->data.total = 1;
-                }
-            }
-        }
-
-        vector<stride_info> get_conf_stride(uint64_t block_number, uint64_t pc_tag){
-            vector<stride_info> conf_stride;
-            Entry *entry = Super::find(pc_tag);
-            if (!entry){
-                // return 0;
-                 if(this->debug_level>=2){
-                    cerr  << "[PCST] get conf stride: "  << " No this pc_tag"<<endl;
-                }
-
-
-                // cerr  << "[PST] get conf stride: "  << " No this page"<<endl;
-                return conf_stride;
-            }else{
-                std::sort(entry->data.stride_conf.begin(), entry->data.stride_conf.end(), compareByConf);
-                // cerr  << "[PST] get conf stride: "  << " page number: "<< region_num <<", size: " << entry->data.stride_conf.size() <<" total: "<< entry->data.total <<endl;
-                for ( auto& pair : entry->data.stride_conf) {
-                    if(pair.stride!=0 && pair.prefetch_level < NO_PREFETCH){
-                        conf_stride.push_back({pair.stride, pair.conf, pair.prefetch_level});
-                    }
-                }
-
-                if( conf_stride.size() ==0 && entry->data.total >= page_first){
-                    std::sort(entry->data.stride_conf.begin(), entry->data.stride_conf.end(), compareByOnlyConf);
-                    for ( auto& pair : entry->data.stride_conf) {
-                        float conf_rate = 1.0*pair.conf/entry->data.total ;
-                        if(pair.stride != 0){
-                            if( conf_rate > 0.8 ){
-                                conf_stride.push_back({pair.stride, pair.conf, L1});
-                            }else if(conf_rate > 0.35){
-                                conf_stride.push_back({pair.stride, pair.conf, L2});
-                            }else{
-                                break;
-                            }
-                        }
-                    }
-                }
-                if(this->debug_level>=2){
-                    cerr  << "[PCST] get conf stride: ";
-                    for ( auto& pair : conf_stride) {
-                        cerr << pair.stride << " ";
-                    }
-                    cerr << endl;
-                }
-                return conf_stride;
-            }
-        }
-    private:
-        uint64_t pattern_len;
-        uint64_t stride_num;
-        float l1_thres, l2_thres, llc_thres;
-        uint64_t page_confident_max, page_first; 
-        // float   page_l1_thres, page_l2_thres, page_l3_thres;
-};
 
 
 class MIX {
@@ -1489,10 +1466,8 @@ class MIX {
     MIX(struct PAGE_SETTING setting)
         : setting(setting), pattern_len(setting.REGION_SIZE>>LOG2_BLOCK_SIZE),
         pat(setting.PAGE_ACCUMULATE_TABLE, setting.REGION_SIZE>>LOG2_BLOCK_SIZE, setting.OFFSET_RECORD_NUMBER),
-        pst(setting.PAGE_STRIDE_TABLE, setting.REGION_SIZE>>LOG2_BLOCK_SIZE, setting.PAGE_STRIDE_NUMBER, 
-        setting.PAGE_L1_THRESHOLD, setting.PAGE_L2_THRESHOLD, setting.PAGE_LLC_THRESHOLD, setting.PAGE_CONFIDENCE_MAX, setting.PAGE_LANZAR_INT),
         bat(setting.PC_ACCUMULATE_TABLE, setting.REGION_SIZE>>LOG2_BLOCK_SIZE, setting.ADDR_RECORD_NUMBER),
-        bst(setting.PC_STRIDE_TABLE, setting.REGION_SIZE>>LOG2_BLOCK_SIZE, setting.PC_STRIDE_NUMBER, 
+        st(setting.PAGE_STRIDE_TABLE_BIT, setting.REGION_SIZE>>LOG2_BLOCK_SIZE, setting.PC_STRIDE_NUMBER, 
         setting.PC_L1_THRESHOLD, setting.PC_L2_THRESHOLD, setting.PC_LLC_THRESHOLD, setting.PAGE_CONFIDENCE_MAX, setting.PAGE_LANZAR_INT),
         ghb(setting.GHB_SIZE, setting.GHB_SIZE, setting.PC_INDEX_SIZE, setting.PAGE_INDEX_SIZE, setting.REGION_SIZE>>LOG2_BLOCK_SIZE)
         {   
@@ -1511,9 +1486,9 @@ class MIX {
         for (int i=0; i<cnt; i++){
             // assert(cnt<6);
             if(i==0){
-                pst.add_page_conf(block_number);
+                st.add_page_conf(block_number,pc_tag, false);
             }
-            pst.add_stride_conf(block_number, strides[i]);
+            st.add_stride_conf(block_number,pc_tag, false, strides[i]);
         }
         // for(uint16_t i = 0; i < 256; i++){
         //     strides[i]= 0;
@@ -1528,10 +1503,10 @@ class MIX {
         for (int i=0; i<cnt; i++){
             // assert(cnt<6);
             if(i==0){
-                bst.add_page_conf(block_number, pc_tag);
+                st.add_page_conf(block_number, pc_tag, true);
             }
             if((std::abs(strides_pc[i]) < (1 << STRIDE_MASK))&&strides_pc[i]!=0){
-                bst.add_stride_conf(block_number, pc_tag,strides_pc[i]);
+                st.add_stride_conf(block_number, pc_tag, true,strides_pc[i]);
             }
         }
         
@@ -1610,13 +1585,13 @@ class MIX {
     }
     vector<stride_info> pc_get_conf_stride(uint64_t block_number, uint64_t pc_tag){
         vector<stride_info> conf_stride_pc;
-        conf_stride_pc = this->bst.get_conf_stride(block_number,pc_tag);
+        conf_stride_pc = this->st.get_conf_stride(block_number,pc_tag, true);
         return conf_stride_pc;
     }
 
     vector<stride_info> page_get_conf_stride(uint64_t block_number){
         vector<stride_info> conf_stride_page;
-        conf_stride_page = this->pst.get_conf_stride(block_number);
+        conf_stride_page = this->st.get_conf_stride(block_number, 0, false);
         return conf_stride_page;
     }
     
@@ -1625,9 +1600,8 @@ class MIX {
     void set_debug_level(int debug_level) { 
         this->debug_level = debug_level; 
         pat.set_debug_level(debug_level);
-        pst.set_debug_level(debug_level);
         bat.set_debug_level(debug_level);
-        bst.set_debug_level(debug_level);
+        st.set_debug_level(debug_level);
         ghb.set_debug_level(debug_level);
     }
     
@@ -1635,9 +1609,8 @@ class MIX {
         struct PAGE_SETTING setting;
         int pattern_len;
         PageAccululateTable pat;
-        PageStrideTable pst;
         PCAccululateTable bat;
-        PCStrideTable bst;
+        StrideTable st;
         int debug_level = 0;
         ghb_history_table ghb;
 
@@ -1670,7 +1643,7 @@ void CACHE::l1d_prefetcher_initialize()
 void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit,
         uint8_t type, uint8_t critical_ip_flag)
 {
-    assert(type == LOAD || type == RFO);
+   assert(type == LOAD || type == RFO);
 
     if(warmup_complete[cpu] && warmup_flag_l1 == 0){
         warmup_flag_l1 = 1;
@@ -1696,23 +1669,49 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
     uint16_t i = 0;
     uint16_t j = 0;
     vector<stride_info> conf_stride_pc;
+    vector<stride_info> conf_stride_all;
     conf_stride_pc = prefetchers[cpu].pc_get_conf_stride(line_addr, ip);
-    if(conf_stride_pc.size() > 0){
-        for (; i < conf_stride_pc.size() && i < setting.MAX_PF_LAUNCH_S; i++){
+    vector<stride_info> conf_stride_page;
+    conf_stride_page = prefetchers[cpu].page_get_conf_stride(line_addr);
+    int pc_strides_num = 0;
+    pc_strides_num = conf_stride_pc.size();
+    int page_strides_num = 0;
+    page_strides_num = conf_stride_page.size();
 
+    if(pc_strides_num != 0)
+    {
+        for (int k = 0; k < pc_strides_num; k++){
+            stride_info tmp = conf_stride_pc[k];
+            conf_stride_all.push_back(tmp);
+        }
+    }
+    if(page_strides_num != 0)
+    {
+        for (int k = 0; k < page_strides_num; k++){
+            stride_info tmp = conf_stride_page[k];
+            conf_stride_all.push_back(tmp);
+        }
+    }
+    std::sort(conf_stride_all.begin(), conf_stride_all.end(), 
+        [](const stride_info& a, const stride_info& b) -> bool {
+            if (a.prefetch_level != b.prefetch_level) {
+                return a.prefetch_level < b.prefetch_level; // 优先比较prefetch_level, 较小的在前
+            }
+            return a.conf > b.conf; // prefetch_level相同的情况下，conf较大的在前
+        }
+    );
 
-            
-            uint64_t p_addr = (line_addr + conf_stride_pc[i].stride) << LOG2_BLOCK_SIZE;
-            uint64_t p_b_addr = (p_addr >> LOG2_BLOCK_SIZE);
-
-            if (!latency_table_get(p_addr, cpu)){
+     for (; i < conf_stride_all.size() && i < setting.ALL_MAX_PF; i++){
+        uint64_t p_addr = (line_addr + conf_stride_all[i].stride) << LOG2_BLOCK_SIZE;
+        uint64_t p_b_addr = (p_addr >> LOG2_BLOCK_SIZE);
+        if (!latency_table_get(p_addr, cpu)){
                 int fill_level = FILL_L1;
                 float mshr_load = ((float) MSHR.occupancy / (float) MSHR_SIZE) * 100;
-                if (conf_stride_pc[i].prefetch_level == L1 && mshr_load < MSHR_LIMIT){
+                if (conf_stride_all[i].prefetch_level == L1 && mshr_load < MSHR_LIMIT){
                     fill_level = FILL_L1;
-                } else if (conf_stride_pc[i].prefetch_level == L1 
-                || conf_stride_pc[i].prefetch_level == L2 
-                || conf_stride_pc[i].prefetch_level == L2R){ 
+                } else if (conf_stride_all[i].prefetch_level == L1 
+                || conf_stride_all[i].prefetch_level == L2 
+                || conf_stride_all[i].prefetch_level == L2R){ 
                     fill_level = FILL_L2;
                 }else{
                     break;
@@ -1723,46 +1722,8 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                     berti_launched++;
                     total_prefetch++;
                 }
-
-            }
         }
-    } 
-    
-    vector<stride_info> conf_stride_page;
-    conf_stride_page = prefetchers[cpu].page_get_conf_stride(line_addr);
-    int page_launched = 0;
-    if(conf_stride_page.size() > 0){
-        for ( ; j <conf_stride_page.size(); j++ ) {
 
-            if( page_launched >= setting.PAGE_MAX_PF_LAUNCH_S ){
-                break;
-            }
-
-            
-            uint64_t p_addr = (line_addr + conf_stride_page[j].stride) << LOG2_BLOCK_SIZE;
-            uint64_t p_b_addr = (p_addr >> LOG2_BLOCK_SIZE);
-
-            if (!latency_table_get(p_addr, cpu)){
-                int fill_level = FILL_L1;
-                float mshr_load = ((float) MSHR.occupancy / (float) MSHR_SIZE) * 100;
-                if (conf_stride_page[j].prefetch_level == L1 && mshr_load < MSHR_LIMIT){
-                    fill_level = FILL_L1;
-                } else if (conf_stride_page[j].prefetch_level == L2 || conf_stride_page[j].prefetch_level == L1){ 
-                    fill_level = FILL_L2;
-                } else if (conf_stride_page[j].prefetch_level == L2R){ 
-                    fill_level = FILL_LLC;
-                } else{
-                    break;
-                }
-
-                if (prefetch_line(ip, addr, p_addr, fill_level, 1)){
-                    // assert(0);
-                    page_launched++;
-                    total_prefetch++;
-                }
-
-            }
-        }
     }
 }
 
