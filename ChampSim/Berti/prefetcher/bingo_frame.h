@@ -266,7 +266,6 @@ template <class T> class SetAssociativeCache {
             //     cerr<<"way: "<<i<<"is valid: " << " tag: "<< set[i].key <<endl;
             // }
 
-         
         if (victim_way == -1) {
             victim_way = this->select_victim(index);
             // cerr<<"all valid lru select: "<<victim_way <<endl;
@@ -283,9 +282,10 @@ template <class T> class SetAssociativeCache {
             assert(num_erased == 1);
         }
         cam[tag] = victim_way;
-
         return old_entry;
     }
+
+
 
     Entry *find(uint64_t key) {
         uint64_t index = key % this->num_sets;
@@ -356,6 +356,7 @@ template <class T> class LRUSetAssociativeCache : public SetAssociativeCache<T> 
 
     void set_lru(uint64_t key) { *this->get_lru(key) = 0; }
 
+    
 
     
   protected:
@@ -366,6 +367,8 @@ template <class T> class LRUSetAssociativeCache : public SetAssociativeCache<T> 
         // cerr<<"lru index: "<<index<<endl;
         return min_element(lru_set.begin(), lru_set.end()) - lru_set.begin();
     }
+
+    
 
     uint64_t *get_lru(uint64_t key) {
         uint64_t index = key % this->num_sets;
@@ -404,6 +407,13 @@ template <class T> class NMRUSetAssociativeCache : public SetAssociativeCache<T>
     }
 
     vector<int> mru;
+};
+
+template <class T> class FullyAssociativeCache : public SetAssociativeCache<T> {
+    typedef SetAssociativeCache<T> Super;
+
+  public:
+    FullyAssociativeCache(int size) : Super(size, size) {}
 };
 
 template <class T> class LRUFullyAssociativeCache : public LRUSetAssociativeCache<T> {
