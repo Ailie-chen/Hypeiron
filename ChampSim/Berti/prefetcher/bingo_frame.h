@@ -172,7 +172,12 @@ template <class T> class SetAssociativeCache {
         T data;
     };
 
-    
+    class entry_with_set{
+        public:
+            Entry a;
+            uint64_t set;
+    };
+
     template<typename T2>
     std::string vectorToString(const std::vector<T2>& vec) {
         std::stringstream ss;
@@ -330,6 +335,16 @@ template <class T> class SetAssociativeCache {
             for (int j = 0; j < num_ways; j += 1)
                 if (entries[i][j].valid)
                     valid_entries.push_back(entries[i][j]);
+        return valid_entries;
+    }
+
+    
+    vector<entry_with_set> get_valid_entries_with_set() {
+        vector<entry_with_set> valid_entries;
+        for (int i = 0; i < num_sets; i += 1)
+            for (int j = 0; j < num_ways; j += 1)
+                if (entries[i][j].valid)
+                    valid_entries.push_back({entries[i][j],i});
         return valid_entries;
     }
 

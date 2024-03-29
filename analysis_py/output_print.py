@@ -2,53 +2,45 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+import sys
 
-#dates=["1019"]
-dates=["1019"]
-traces=["spec2k17"]
+#dates=["0315"]
+dates=["0315"]
+traces=["spec","spec2k06","spec2k17","ligra","gap"]
+
 # metrics=['IPC','IPCI','L1D LOAD_ACCURACY','L1D MPKI']
-metrics=['IPC','IPCI']
+metrics=['Prefetcher','IPCI', "L1D Accuracy"]
+# ,"L2C Accuracy","L2C MPKI","L1D Coverage"]
+# metrics=['Prefetcher','IPCI','Global Coverage',"L1D Coverage", "L1D Accuracy","L2C Accuracy",]
 
 
-
-def print_for_metric(data, metric):
-    print('\n')
-    print(f"{metric}\n")
+def print_for_metric(data,trace):
     # 获得标签，并提取相对应的metric的数据
-    benchmarks_name = data.iloc[0, 2:].tolist()
-    num_benchmarks = data.shape[1] - 2       # remove prefetcher_name and metric name
-    prefetcher_range = [0, 1, 2, 3, 4,5]
-    # prefecher_range =[],0代表no,1代表ip_stride,2代表ipcp, 3代表dpc3_mlop,4代表vberti，5代表vbertim
-    num_prefetchers = len(prefetcher_range)
-
-    metric_data = data[data.iloc[:, 1].str.contains(metric)]
-    metric_data = metric_data.iloc[prefetcher_range, :]
-
-
-    metric_data_df = metric_data.iloc[:,2:2+num_benchmarks]
-    metric_data_df = metric_data_df.replace('-', 0).astype(float)
-
-    vberti_value = metric_data.iloc[4,2:2+num_benchmarks]
-    vberti_value = vberti_value.replace('-', 0)
-    vberti_value = vberti_value.astype(float)
-    vbertim_value = metric_data.iloc[5,2:2+num_benchmarks]
-    vbertim_value = vbertim_value.replace('-', 0)
-    vbertim_value = vbertim_value.astype(float)
-    
-    for i in range(len(vberti_value)):
-        # print(f"{benchmarks_name[i]} {vberti_value[i]} {vbertim_value[i]} \n")    
-        if(benchmarks_name[i]=="Average"):
-            improve = (vbertim_value[i+2].astype(float) - vberti_value[i+2].astype(float))/vberti_value[i+2].astype(float)*100
-            print(f"{dates} {traces} {metric} {benchmarks_name[i]} vberti:{vberti_value[i+2]} vbertim:{vbertim_value[i+2]} improve:{improve}%\n")
+    num_prefs = data.shape[0]-1
+    prefetcher_range=np.arange(1,data.shape[0])
+    metric_data = pd.DataFrame(index=prefetcher_range, columns=metrics)
+    for row_idx in prefetcher_range:
+        if(trace == '4suites'):
+            for metric in metrics + ['L1D MPKI', 'L2C MPKI', 'LLC MPKI']:
+                metric_data_idx = data.iloc[0, :] == metric
+                # Extract and assign the metric data for the current row and metric
+                metric_data.at[row_idx, metric] = data.loc[row_idx, metric_data_idx].values
         else:
-            print(f"{dates} {traces} {metric} {benchmarks_name[i]} vberti:{vberti_value[i+2]} vbertim:{vbertim_value[i+2]}\n")
+            for metric in metrics:
+                metric_data_idx = data.iloc[0, :] == metric
+                # Extract and assign the metric data for the current row and metric
+                metric_data.at[row_idx, metric] = data.loc[row_idx, metric_data_idx].values
+
+    # Print the final organized metric data
+    print(metric_data)
+
 
 
 # 在这里替换为你想要的指标
 if __name__ == "__main__":  
     for date in dates:
         for trace in traces:
-            data_file_path='evaluationmemtense/'+ trace + '/'+'all_results_figs/'
-            data = pd.read_csv(data_file_path + date + '.csv', header=None).T
-            for metric in metrics:
-                print_for_metric(data,metric)
+            print(trace)
+            data_file_path='evaluationmemtense/'+ trace + '/'+'all_results/'
+            data = pd.read_csv(data_file_path + date + '.csv', header=None)
+            print_for_metric(data,trace)

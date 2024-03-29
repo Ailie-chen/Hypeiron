@@ -37,7 +37,7 @@
 # define CONFIDENCE_L2                (50) // 6 bits
 # define CONFIDENCE_L2R               (35) // 6 bits
 //# define CONFIDENCE_L2R               (CONFIDENCE_L2) // 6 bits
-# define MSHR_LIMIT                   (70)
+# define MSHR_LIMIT                   (75)
 
 // Stride rpl
 // L1, L2, L2 reemplazable y No (reemplazable).

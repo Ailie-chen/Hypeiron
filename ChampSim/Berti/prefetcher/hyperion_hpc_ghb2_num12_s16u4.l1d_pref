@@ -944,118 +944,6 @@ class ghb_history_table {
 
 
 
-/******************************************************************************/
-/*                       History Table functions                               */
-/******************************************************************************/
-// Auxiliar history table functions
-
-struct PageAccInfo{
-    uint64_t offset;
-    uint64_t latency;
-};
-class PageAccululateTableData {
-  public:
-    // vector<bool> offsets;
-    // vector<uint64_t> latencys;
-    // vector<uint64_t> counter;
-
-    deque<int> offsets;
-    deque<uint64_t> latencys;
-    // vector<struct PageAccInfo> page_history;
-};
-
-class PageAccululateTable : public LRUFullyAssociativeCache<PageAccululateTableData> {
-    typedef LRUFullyAssociativeCache<PageAccululateTableData> Super;
-    public:
-        PageAccululateTable(int size, int pattern_len, int offset_number) : Super(size) , pattern_len(pattern_len),offset_number(offset_number){
-            cerr<<"PatternAccululateTable sets: "<< num_sets<<" ways: "<<num_ways<<endl;
-        }
-
-        int insert(uint64_t block_number, uint64_t lat ){
-            uint64_t region_num =  (block_number / this->pattern_len)&PAGE_MASK;
-            int region_offset   =  block_number % this->pattern_len;
-            Entry *entry = Super::find(region_num);
-            if (!entry){
-                // vector<bool> offsets(this->pattern_len, false);
-                // vector<uint64_t> latencys(this->pattern_len, 0);
-                // vector<uint64_t> counter(this->pattern_len, 0);
-                deque<int> offsets;
-                deque<uint64_t> latencys;
-                offsets.push_back(region_offset);
-                latencys.push_back(lat);
-                // offsets[region_offset] = true;
-                // latencys[region_offset]=lat;
-                // counter[region_offset]=1;
-                Entry victim =  Super::insert(region_num, {offsets,latencys});
-                this->set_mru(region_num);
-                if(this->debug_level>=2){
-                    cerr  << "[PAT] Insert new page: "<<  region_num << ", latency: " << lat << " offsets: "<< dequeToString(offsets) <<endl;
-                }
-                return 0;
-            }else{
-
-                this->set_mru(region_num);
-                // entry->data.offsets[region_offset] = true;
-                // entry->data.latencys[region_offset] = lat;
-                // entry->data.counter[region_offset] = entry->data.counter[region_offset] + 1;
-
-                for (size_t i = 0; i < entry->data.offsets.size(); ++i) {
-                    if(entry->data.offsets[i] == region_offset){
-                        return 0;
-                    }
-                } 
-
-                if(entry->data.offsets.size()>= this->offset_number){
-                    entry->data.offsets.pop_front();
-                    entry->data.latencys.pop_front();
-                }
-                entry->data.offsets.push_back(region_offset);
-                entry->data.latencys.push_back(lat);
-
-                if(this->debug_level>=2){
-                    cerr  << "[PAT] Accumulate new page number: "<<  region_num << ", latency: " << lat << " offsets: "<< dequeToString(entry->data.offsets) <<endl;
-                }
-                return 0;
-            }
-        }
-
-        int get_stride(uint64_t block_number, uint64_t lat, uint64_t cycle, int stride[2] ){
-            uint64_t region_num =  (block_number / this->pattern_len)&PAGE_MASK;
-            int region_offset   =  block_number % this->pattern_len;
-            Entry *entry = Super::find(region_num);
-            if (!entry){
-                if(this->debug_level>=2){
-                    cerr  << "[PAT] No stride. page number: "<<  region_num << ", latency: " << lat << " cycle: "<< cycle <<endl;
-                }
-                return 0;
-            }else{
-                if (cycle < lat) return 0;
-                cycle = cycle - lat;
-                int cnt = 0;
-                this->set_mru(region_num);
-
-
-                for (size_t i = 0; i < entry->data.offsets.size(); ++i) {
-                    if( entry->data.latencys[i] < cycle ){
-                        if((region_offset - entry->data.offsets[i]) != 0){
-                            stride[cnt] = region_offset - entry->data.offsets[i];
-                            cnt = cnt + 1;
-                        }
-                        if(this->debug_level>=2){
-                            cerr  << "[PAT] stride: " << stride[i]<<" offset " << region_offset<<" "<<entry->data.offsets[i] << " page number: "<<  region_num << ", latency: " << lat << " cycle: "<< cycle <<endl;
-                        }  
-                    }      
-                }
-
-                return cnt;
-            }
-        }
-    
-    private:
-        uint64_t pattern_len;
-        uint64_t offset_number;
-};
-
 struct stride_info {
     int stride;
     uint64_t conf;
@@ -1356,128 +1244,11 @@ class StrideTable : public LRUSetAssociativeCache<StrideTableData> {
 };
 
 
-struct PCAccInfo{
-    uint64_t addr;
-    uint64_t latency;
-};
-class PCAccululateTableData {
-  public:
-    // vector<bool> offsets;
-    // vector<uint64_t> latencys;
-    // vector<uint64_t> counter;
-
-    deque<uint64_t> addrs;
-    deque<uint64_t> latencys;
-};
-class PCAccululateTable : public LRUFullyAssociativeCache<PCAccululateTableData> {
-    typedef LRUFullyAssociativeCache<PCAccululateTableData> Super;
-    public:
-        PCAccululateTable(int size, int pattern_len, int addr_number) : Super(size) , pattern_len(pattern_len),addr_number(addr_number){
-            cerr<<"PatternAccululateTable sets: "<< num_sets<<" ways: "<<num_ways<<endl;
-        }
-
-        int insert(uint64_t block_number,uint64_t pc_tag, uint64_t lat ){
-            block_number = block_number&ADDR_MASK;
-            Entry *entry = Super::find(pc_tag);
-            if (!entry){
-                // vector<bool> offsets(this->pattern_len, false);
-                // vector<uint64_t> latencys(this->pattern_len, 0);
-                // vector<uint64_t> counter(this->pattern_len, 0);
-                deque<uint64_t> addrs;
-                deque<uint64_t> latencys;
-                addrs.push_back(block_number);
-                latencys.push_back(lat);
-                // offsets[region_offset] = true;
-                // latencys[region_offset]=lat;
-                // counter[region_offset]=1;
-                Entry victim =  Super::insert(pc_tag, {addrs,latencys});
-                this->set_mru(pc_tag);
-                if(this->debug_level>=2){
-                    // cerr  << "[PCAT] Insert new pc: "<<  pc_tag << ", latency: " << lat << " offsets: "<< dequeToString(addrs) <<endl;
-                }
-                return 0;
-            }else{
-
-                this->set_mru(pc_tag);
-                // entry->data.offsets[region_offset] = true;
-                // entry->data.latencys[region_offset] = lat;
-                // entry->data.counter[region_offset] = entry->data.counter[region_offset] + 1;
-
-                for (size_t i = 0; i < entry->data.addrs.size(); ++i) {
-                    if(entry->data.addrs[i] == block_number){
-                        return 0;
-                    }
-                } 
-
-                if(entry->data.addrs.size()>= this->addr_number){
-                    entry->data.addrs.pop_front();
-                    entry->data.latencys.pop_front();
-                }
-                entry->data.addrs.push_back(block_number);
-                entry->data.latencys.push_back(lat);
-
-                if(this->debug_level>=2){
-                    // cerr  << "[PCAT] Accumulate new pc_tag: "<<  pc_tag << ", latency: " << lat << " offsets: "<< dequeToString(entry->data.addrs) <<endl;
-                }
-                return 0;
-            }
-        }
-
-        int get_stride(uint64_t block_number,uint64_t pc_tag, uint64_t lat, uint64_t cycle, int64_t stride[] ){
-            block_number = block_number & ADDR_MASK;
-            Entry *entry = Super::find(pc_tag);
-            if (!entry){
-                if(this->debug_level>=2){
-                    cerr  << "[PCAT] No stride. page number: "<<  pc_tag << ", latency: " << lat << " cycle: "<< cycle <<endl;
-                }
-                return 0;
-            }else{
-                if (cycle < lat) return 0;
-                cycle = cycle - lat;
-                int cnt = 0;
-                this->set_mru(pc_tag);
-
-                for (size_t i =  entry->data.addrs.size(); i-- > 0;) {
-                    if( entry->data.latencys[i] < cycle ){
-                        // if(entry->data.addrs[i] == block_number){
-                        //     return cnt;
-                        // }           
-                        int64_t delta;
-                        delta = (int64_t)(block_number - entry->data.addrs[i]);
-                        // for(size_t k = 0; k < cnt; k++){
-                        //     if(stride[k]==delta){
-                        //         return cnt;
-                        //     }
-                        // }
-                        stride[cnt] = delta;
-                        cnt = cnt + 1;
-                        // if((std::abs(delta) < (1 << STRIDE_MASK))&&delta!=0){
-                        //     stride[cnt] = delta;
-                        //     cnt = cnt + 1;
-                        // }
-                        if(this->debug_level>=2){
-                            cerr  << "tag" << pc_tag<<"[PCAT] stride: " << delta<<" addr " << block_number<<" "<<entry->data.addrs[i] << ", latency: " << lat << " cycle: "<< cycle <<endl;
-                        }           
-                    }      
-                }
-
-                return cnt;
-            }
-        }
-    
-    private:
-        uint64_t pattern_len;
-        uint64_t addr_number;
-};
-
-
 class MIX {
   public:
 
     MIX(struct PAGE_SETTING setting)
         : setting(setting), pattern_len(setting.REGION_SIZE>>LOG2_BLOCK_SIZE),
-        pat(setting.PAGE_ACCUMULATE_TABLE, setting.REGION_SIZE>>LOG2_BLOCK_SIZE, setting.OFFSET_RECORD_NUMBER),
-        bat(setting.PC_ACCUMULATE_TABLE, setting.REGION_SIZE>>LOG2_BLOCK_SIZE, setting.ADDR_RECORD_NUMBER),
         st(setting.PAGE_STRIDE_TABLE_BIT, setting.REGION_SIZE>>LOG2_BLOCK_SIZE, setting.PC_STRIDE_NUMBER, 
         setting.PC_L1_THRESHOLD, setting.PC_L2_THRESHOLD, setting.PC_LLC_THRESHOLD, setting.PAGE_CONFIDENCE_MAX, setting.PAGE_LANZAR_INT),
         ghb(setting.GHB_SIZE, setting.GHB_SIZE, setting.PC_INDEX_SIZE, setting.PAGE_INDEX_SIZE, setting.REGION_SIZE>>LOG2_BLOCK_SIZE)
@@ -1527,16 +1298,6 @@ class MIX {
 
 
         uint64_t block_number =  line_addr;
-        
-        // uint64_t block_number = ((line_addr >> 1) ^ (line_addr >> 4));
-        // block_number = block_number&PAGE_MASK ;
-        
-
-        // if (this->debug_level >= 2) {
-        //     uint64_t region_number = (block_number / this->pattern_len)&PAGE_MASK;
-        //     int region_offset = block_number % this->pattern_len;    
-        //     cerr << "[MIX] cache fill(block_number: "  << block_number << ", region_number:" << region_number <<" region_offset: " << region_offset << ", latency: " << latency << " )" << endl;
-        // }
         update_stride(block_number, pc_tag, latency, cycle);
         
     }
@@ -1567,8 +1328,6 @@ class MIX {
             uint64_t cycle = current_core_cycle[cpu] & TIME_MASK;
             latency_table_add(line_addr, pc_tag, cpu, 1);
             ghb.insert(pc_tag, block_number,cycle);
-            pat.insert(block_number, cycle);
-            bat.insert(block_number,pc_tag, cycle);
         }else if (cache_hit && shadow_cache_is_pf(cpu, line_addr)){
             if(this->debug_level >= 2)
             {
@@ -1578,9 +1337,7 @@ class MIX {
             uint64_t latency = shadow_cache_latency(cpu, line_addr);
             shadow_cache_pf(cpu, line_addr);
             update_stride(block_number, pc_tag,latency, cycle); 
-            ghb.insert(pc_tag, block_number,cycle); 
-            pat.insert(block_number, cycle);
-            bat.insert(block_number,pc_tag, cycle);    
+            ghb.insert(pc_tag, block_number,cycle);  
             
                   
                     
@@ -1610,8 +1367,6 @@ class MIX {
 
     void set_debug_level(int debug_level) { 
         this->debug_level = debug_level; 
-        pat.set_debug_level(debug_level);
-        bat.set_debug_level(debug_level);
         st.set_debug_level(debug_level);
         ghb.set_debug_level(0);
     }
@@ -1619,8 +1374,6 @@ class MIX {
     private:
         struct PAGE_SETTING setting;
         int pattern_len;
-        PageAccululateTable pat;
-        PCAccululateTable bat;
         StrideTable st;
         int debug_level = 0;
         ghb_history_table ghb;

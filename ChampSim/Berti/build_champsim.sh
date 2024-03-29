@@ -36,7 +36,7 @@ DATE_SET=${19}
 BOLD=$(tput bold)
 NORMAL=$(tput sgr0)
 #################################################
-
+in_prefetcher=true
 # Sanity check
 if [ ! -f ./branch/${BRANCH}.bpred ]; then
     echo "[ERROR] Cannot find branch predictor"
@@ -54,10 +54,13 @@ fi
 
 
 if [ ! -f ./prefetcher/${L1D_PREFETCHER}.l1d_pref ]; then
-    echo "[ERROR] Cannot find L1D prefetcher"
-	echo "[ERROR] Possible L1D prefetchers from prefetcher/*.l1d_pref "
-    find prefetcher -name "*.l1d_pref"
-    exit 1
+    in_prefetcher=false
+    if [ ! -f ./batch_prefetcher/${L1D_PREFETCHER}.l1d_pref ]; then
+        echo "[ERROR] Cannot find L1D prefetcher"
+        echo "[ERROR] Possible L1D prefetchers from prefetcher/*.l1d_pref "
+        find prefetcher -name "*.l1d_pref"
+        exit 1
+    fi
 fi
 
 if [ ! -f ./prefetcher/${L2C_PREFETCHER}.l2c_pref ]; then
@@ -179,7 +182,11 @@ echo
 # Change prefetchers and replacement policy
 cp branch/${BRANCH}.bpred branch/branch_predictor.cc
 cp prefetcher/${L1I_PREFETCHER}.l1i_pref prefetcher/l1i_prefetcher.cc
-cp prefetcher/${L1D_PREFETCHER}.l1d_pref prefetcher/l1d_prefetcher.cc
+if [ "$in_prefetcher" == "false" ]; then
+    cp batch_prefetcher/${L1D_PREFETCHER}.l1d_pref prefetcher/l1d_prefetcher.cc
+else
+    cp prefetcher/${L1D_PREFETCHER}.l1d_pref prefetcher/l1d_prefetcher.cc
+fi
 cp prefetcher/${L2C_PREFETCHER}.l2c_pref prefetcher/l2c_prefetcher.cc
 cp prefetcher/${LLC_PREFETCHER}.llc_pref prefetcher/llc_prefetcher.cc
 cp prefetcher/${ITLB_PREFETCHER}.itlb_pref prefetcher/itlb_prefetcher.cc

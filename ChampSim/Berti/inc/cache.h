@@ -105,8 +105,8 @@ extern uint32_t PAGE_TABLE_LATENCY, SWAP_LATENCY;
 #define L1I_WQ_SIZE 64 
 #define L1I_PQ_SIZE 16
 #define L1I_MSHR_SIZE 8
-#define L1I_LATENCY 4
-// #define L1I_LATENCY 2
+// #define L1I_LATENCY 4
+#define L1I_LATENCY 2
 
 // L1 DATA CACHE
 #define L1D_SET 64
@@ -115,8 +115,8 @@ extern uint32_t PAGE_TABLE_LATENCY, SWAP_LATENCY;
 #define L1D_WQ_SIZE 64 
 //#define L1D_PQ_SIZE 16     //	Neelu: Changed from 8 to 16.
 //#define L1D_MSHR_SIZE 16
-#define L1D_LATENCY 5
-// #define L1D_LATENCY 3
+// #define L1D_LATENCY 5
+#define L1D_LATENCY 3
 //modify
 #define L1D_PQ_SIZE 16
 #define L1D_MSHR_SIZE 16
