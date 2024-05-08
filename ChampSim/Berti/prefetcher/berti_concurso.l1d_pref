@@ -23,6 +23,11 @@ uint32_t l1d_cpu_id;
 #define L1D_TIME_OVERFLOW ((uint64_t)1 << L1D_TIME_BITS)
 #define L1D_TIME_MASK (L1D_TIME_OVERFLOW - 1)
 
+void notify_prefetch(uint64_t addr, uint64_t tag, uint32_t cpu, uint64_t cycle)
+{
+}
+
+
 uint64_t l1d_get_latency(uint64_t cycle, uint64_t cycle_prev) {
   return cycle - cycle_prev;
   uint64_t cycle_masked = cycle & L1D_TIME_MASK;
@@ -618,9 +623,10 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
 	      if (PQ.occupancy < PQ.SIZE && bursts < L1D_MAX_NUM_BURST_PREFETCHES) {
 		bool prefetched = prefetch_line(ip, addr, pf_addr, FILL_L1, 0);
 		if (prefetched) {
-		  assert(pf_page_addr == page_addr);
-		  l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
-		  bursts++;
+		  if(pf_page_addr == page_addr){
+        l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
+        bursts++;
+      }
 		}
 	      } else { // record last burst
 		l1d_current_pages_table[l1d_cpu_id][index].last_burst = i;
@@ -641,9 +647,10 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
 	      if (PQ.occupancy < PQ.SIZE && bursts < L1D_MAX_NUM_BURST_PREFETCHES) {
 		bool prefetched = prefetch_line(ip, addr, pf_addr, FILL_L1, 0);
 		if (prefetched) {
-		  assert(pf_page_addr == page_addr);
-		  l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
-		  bursts++;
+		  if(pf_page_addr == page_addr){
+        l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
+        bursts++;
+      }
 		}
 	      } else { // record last burst
 		l1d_current_pages_table[l1d_cpu_id][index].last_burst = i;
@@ -665,9 +672,10 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
 	      if (PQ.occupancy < PQ.SIZE && bursts < L1D_MAX_NUM_BURST_PREFETCHES) {
 		bool prefetched = prefetch_line(ip, addr, pf_addr, FILL_L1, 0);
 		if (prefetched) {
-		  assert(pf_page_addr == page_addr);
-		  l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
-		  bursts++;
+		  if(pf_page_addr == page_addr){
+        l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
+        bursts++;
+      }
 		}
 	      } else { // record last burst
 		l1d_current_pages_table[l1d_cpu_id][index].last_burst = i;
@@ -684,9 +692,10 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
 	      if (PQ.occupancy < PQ.SIZE && bursts < L1D_MAX_NUM_BURST_PREFETCHES) {
 		bool prefetched = prefetch_line(ip, addr, pf_addr, FILL_L1, 0);
 		if (prefetched) {
-		  assert(pf_page_addr == page_addr);
-		  l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
-		  bursts++;
+		  if(pf_page_addr == page_addr){
+        l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
+        bursts++;
+      }
 		}
 	      } else {
 		// record only positive burst
@@ -707,8 +716,9 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
 	  && (!match_confidence || (((uint64_t)1 << pf_offset) & u_vector))) { // And prev. accessed
 	bool prefetched = prefetch_line(ip, addr, pf_addr, FILL_L1, 0);
 	if (prefetched) {
-	  assert(pf_page_addr == page_addr);
-	  l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
+	  if(pf_page_addr == page_addr){
+	    l1d_add_prev_prefetches_table(index, pf_offset, current_core_cycle[cpu]);
+    }
 	}
       }
     }
@@ -718,7 +728,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
 void CACHE::l1d_prefetcher_cache_fill(uint64_t v_addr,uint64_t addr, uint32_t set, uint32_t way, uint8_t prefetch, uint64_t v_evicted_addr, uint64_t evicted_addr, uint32_t metadata_in)
 {
   l1d_cpu_id = cpu;
-  uint64_t line_addr = (addr >> LOG2_BLOCK_SIZE);
+  uint64_t line_addr = (v_addr >> LOG2_BLOCK_SIZE);
   uint64_t page_addr = line_addr >> L1D_PAGE_BLOCKS_BITS;
   uint64_t offset = line_addr & L1D_PAGE_OFFSET_MASK;
 

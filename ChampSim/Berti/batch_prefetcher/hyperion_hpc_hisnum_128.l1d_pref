@@ -17,8 +17,8 @@ bool spec_intructions_complete;
 struct PAGE_SETTING{
     const uint64_t REGION_SIZE = 32 * 1024;
 
-    const int GHB_SIZE = 128; //6*max(pc_page)
-    const int PC_INDEX_SIZE = 32; // 16 32 64 128 256
+    const int GHB_SIZE = 256; //6*max(pc_page)
+    const int PC_INDEX_SIZE = 16; // 16 32 64 128 256
     const int PAGE_INDEX_SIZE = 32; // 16 32 64 128 256
     const int MAX_HIS_LEN = 8;
     //索引表的way数是固定的16
@@ -37,13 +37,13 @@ struct PAGE_SETTING{
     const uint64_t PAGE_LANZAR_INT = 8;
 
 
+
+
 };
 
 
 uint8_t warmup_flag_l1 = 0;
-float ghb_page_occupancy = 0.0;
-float ghb_pc_occupancy = 0.0;
-uint64_t ghb_occupancy_nums = 0;
+
 
 uint64_t hash_index(uint64_t key, uint64_t page_size, uint64_t pc_size,  bool is_pc){ 
     // uint64_t index = key % this->num_sets;
@@ -445,16 +445,6 @@ class ghb_index_table:public LRUSetAssociativeCache<int> {
                 cout << valid_entries[i].tag << " " <<valid_entries[i].data << endl;
             }
         }
-        int min_index(int ghb_size){
-            int min = ghb_size;
-            vector<Entry> valid_entries = Super::get_valid_entries();
-            for(int i = 0; i < valid_entries.size(); i++){
-                if(valid_entries[i].data <= min){
-                    min = valid_entries[i].data;
-                }
-            }
-            return min;
-        }
 
     private:
         uint64_t size;
@@ -752,11 +742,7 @@ class ghb_history_table {
         }
         void remove_page_node(int page_head, uint64_t idx, uint64_t victim_page){
             if(page_head == idx){
-                if(this->ghb[page_head].page_next == this->max_len){
-                    this->page_index_table.erase(victim_page);
-                }else{
-                    this->page_index_table.update(victim_page, this->ghb[page_head].page_next);      
-                }
+                this->page_index_table.update(victim_page, this->ghb[page_head].page_next);      
             }
             return;
         }
@@ -765,10 +751,6 @@ class ghb_history_table {
         int ghb_insert(){
             int victim_idx;
             bool is_full = false;
-            if(this->tail == (this->size-1)){
-                ghb_occupancy_nums += 1;
-                this->ghb_occupy();
-            }
             if(this->ghb[this->tail].timestamp != 0 && (this->tail == this->head))
             {
                 is_full = true;
@@ -801,6 +783,7 @@ class ghb_history_table {
         //判断当前index中记录的第一个索引是不是正确的
         bool is_pc_exist(uint pc_head, int64_t pc){
             if(pc_head != this->max_len && (this->ghb[pc_head].pc != pc)){
+                cout << "1" << endl;
             }
             return (pc_head != this->max_len && (this->ghb[pc_head].pc == pc));
         }
@@ -808,13 +791,7 @@ class ghb_history_table {
             return (page_head != this->max_len &&(((this->ghb[page_head].address / this->pattern_len)&PAGE_MASK)== page_number));
         }
 
-        void ghb_occupy(){
-            int pc_index_min = pc_index_table.min_index(this->size-1);
-            int page_index_min = page_index_table.min_index(this->size-1);
-            ghb_pc_occupancy += float(this->max_len - pc_index_min)/this->max_len;
-            ghb_page_occupancy += float(this->max_len - page_index_min)/this->max_len;
-        }
-
+            
         void print_ghb(){
             cout << "print_ghb: index, pc, address, timestamp, pc_next, page_next" << endl;
             if(this->ghb[this->tail].timestamp != 0 && (this->tail == this->head)){
@@ -1052,9 +1029,9 @@ class StrideTable : public LRUSetAssociativeCache<StrideTableData> {
                             //
                             if(pair.stride!=0 ){
                                 float conf_rate = 1.0*pair.conf/entry->data.total ;
-                                if( conf_rate > 0.8 ){
+                                if( conf_rate > l1_thres ){
                                     conf_stride.push_back({pair.stride, pair.conf, L1});
-                                }else if(conf_rate > 0.20){
+                                }else if(conf_rate > l2_thres){
                                     conf_stride.push_back({pair.stride, pair.conf, L2});
                                 }else if(conf_rate > llc_thres){
                                     conf_stride.push_back({pair.stride, pair.conf, L2R});
@@ -1091,9 +1068,9 @@ class StrideTable : public LRUSetAssociativeCache<StrideTableData> {
                             //
                             if(pair.stride!=0 ){
                                 float conf_rate = 1.0*pair.conf/entry->data.total ;
-                                if( conf_rate > 0.8 ){
+                                if( conf_rate > l1_thres ){
                                     conf_stride.push_back({pair.stride, pair.conf, L1});
-                                }else if(conf_rate > 0.20){
+                                }else if(conf_rate > l2_thres){
                                     conf_stride.push_back({pair.stride, pair.conf, L2});
                                 }else if(conf_rate > llc_thres){
                                     conf_stride.push_back({pair.stride, pair.conf, L2R});
@@ -1423,9 +1400,5 @@ void CACHE::l1d_prefetcher_cache_fill(uint64_t v_addr, uint64_t addr,
 
 void CACHE::l1d_prefetcher_final_stats()
 {
-    cout << ghb_page_occupancy << endl;
-    cout << ghb_pc_occupancy << endl;
-    cout << ghb_occupancy_nums << endl;
-    cout << "Average ghb_page_occupancy: " << (ghb_page_occupancy / ghb_occupancy_nums) << endl;
-    cout << "Average ghb_pc_occupancy: " << (ghb_pc_occupancy / ghb_occupancy_nums) << endl;
+
 }

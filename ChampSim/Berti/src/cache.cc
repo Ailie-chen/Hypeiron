@@ -3786,6 +3786,7 @@ if((cache_type == IS_L1I || cache_type == IS_L1D) && reads_ready.size() == 0)
                 //pf_packet.data_index = LQ.entry[lq_index].data_index;
                 //pf_packet.lq_index = lq_index;
                 pf_packet.address = pf_addr >> LOG2_BLOCK_SIZE;
+                // cout << " pf_packet.address " << pf_packet.address << endl;
                 pf_packet.full_addr = pf_addr;
                 pf_packet.full_virtual_address = pf_addr;
 

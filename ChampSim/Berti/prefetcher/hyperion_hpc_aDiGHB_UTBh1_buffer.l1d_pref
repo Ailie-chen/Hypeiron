@@ -13,24 +13,24 @@
 //uint64_t RR_dx[NUM_CPUS] = {0};
 bool spec_intructions_complete;
 
-
+const double L1_THRESHOLD=0.80;
+const double L2_THRESHOLD=0.20;
+const double LLC_THRESHOLD=1.0;
 struct PAGE_SETTING{
     const uint64_t REGION_SIZE = 32 * 1024;
 
     const int GHB_SIZE = 256; //6*max(pc_page)
     const int PC_INDEX_SIZE = 16; // 16 32 64 128 256
-    const int PAGE_INDEX_SIZE = 32; // 16 32 64 128 256
+    const int PAGE_INDEX_SIZE = 16; // 16 32 64 128 256
     const int MAX_HIS_LEN = 8;
     //索引表的way数是固定的16
 
 
-    const uint64_t PAGE_STRIDE_TABLE_SIZE=64;// follow with page or page*2
-    const uint64_t PC_STRIDE_TABLE_SIZE=16;// follow with pc or pc*2
+    const uint64_t PAGE_STRIDE_TABLE_SIZE = 64;// follow with page or page*2
+    const uint64_t PC_STRIDE_TABLE_SIZE = 16;// follow with pc or pc*2
     const uint64_t DELTA_NUM = 8;
 
-    const float L1_THRESHOLD=0.80;
-    const float L2_THRESHOLD=0.20;
-    const float LLC_THRESHOLD=1.0;
+
 
     const int ALL_MAX_PF = 12;
     const uint64_t PAGE_CONFIDENCE_MAX = 16;
@@ -45,27 +45,45 @@ struct PAGE_SETTING{
 uint8_t warmup_flag_l1 = 0;
 
 
-uint64_t hash_index(uint64_t key, uint64_t page_size, uint64_t pc_size,  bool is_pc){ 
+uint64_t hash_index(uint64_t key, uint64_t page_size, uint64_t pc_size,  bool is_pc, uint64_t num_way){ 
+    
     // uint64_t index = key % this->num_sets;
     // uint64_t tag = key / this->num_sets;  
+    // cout << "key: " << key ;
     if(is_pc){
-        int pc_set_num = pc_size / 16;
-        int all_set_num = (pc_size + page_size)/ 16;
+        int pc_set_num = pc_size / num_way;
+        int all_set_num = (pc_size + page_size)/ num_way;
+        // cout << " tag " << ((key / pc_set_num)*all_set_num) + (key % pc_set_num)<< endl ;
         return ((key / pc_set_num)*all_set_num) + (key % pc_set_num);
     }
     else{
-        int pc_set_num = pc_size / 16;
-        int page_set_num = page_size / 16;
-        int all_set_num = (pc_size + page_size)/ 16;
+        int pc_set_num = pc_size / num_way;
+        int page_set_num = page_size / num_way;
+        int all_set_num = (pc_size + page_size)/ num_way;
+        // cout << " tag " << (((key/page_set_num)*all_set_num) + (key % page_set_num) + pc_set_num) << endl ;
         return ((key/page_set_num)*all_set_num) + (key % page_set_num) + pc_set_num;
     }
-    // if(is_pc){
-    //     return key * 5;
-    // }
-    // else{
-    //     return ((key % 4) + 1) + (key / 4) * 5;
-    // }
 
+}
+
+uint64_t hash_index_iPC(int sets, uint64_t key, int i_set){ 
+    
+    // uint64_t index = key % this->num_sets;
+    // uint64_t tag = key / this->num_sets;  
+    // cout << "key: " << key ;
+    return key * uint64_t(sets) + uint64_t(i_set);
+
+}
+
+int get_3min(uint64_t pc_size, uint64_t page_size){
+    if(pc_size <= page_size && pc_size < uint64_t(16)){
+        return int(pc_size);
+    }
+    else if(page_size <= pc_size && page_size < uint64_t(16)){
+        return int(page_size);
+    }else{
+        return int(uint64_t(16));
+    }
 }
 
 void notify_prefetch(uint64_t addr, uint64_t tag, uint32_t cpu, uint64_t cycle)
@@ -408,7 +426,7 @@ uint8_t shadow_cache_latency(uint32_t cpu, uint64_t line_addr)
 class ghb_index_table:public LRUSetAssociativeCache<int> {
     typedef LRUSetAssociativeCache<int> Super;
     public:
-        ghb_index_table(int size) : Super(size,16) {
+        ghb_index_table(int size) : Super(size,min(16,size)) {
             cerr<<"ghb_index_table sets: "<< num_sets<<" ways: "<<num_ways<<endl;
         }
         int find(uint64_t tag){
@@ -426,6 +444,12 @@ class ghb_index_table:public LRUSetAssociativeCache<int> {
             }else{
                 return entry.data;
             }      
+        }
+        int get_i_set(uint64_t tag){
+            return tag % this->num_sets;
+        }
+        int get_num_sets(){
+            return this->num_sets;
         }
         void update(uint64_t tag, int data){
             Entry *entry = Super::find(tag);
@@ -468,6 +492,7 @@ class ghb_history_table {
         pattern_len(pattern_len),ghb(max_len),
         max_his_len(max_his_len) {
             //max_len代表同一个PC或者page的能够拥有的最大长度的历史信息
+            cerr <<"max_len"<< this->max_his_len << endl;
             for(int i = 0; i < this->max_len; i++){
                 this->ghb[i].pc = 0;
                 this->ghb[i].pc_next = this->max_len;
@@ -563,9 +588,9 @@ class ghb_history_table {
             int victim_data_pc_index = -1;
             if(pc_head==-1){
                 victim_data_pc_index = this->pc_index_table.insert(pc,this->max_len);
-                this->index_pc_table.erase(victim_data_pc_index);
+                this->index_pc_table.erase(hash_index_iPC(this->index_pc_table.get_num_sets(),victim_data_pc_index,this->pc_index_table.get_i_set(pc)));
                 pc_head = this->max_len;
-                this->index_pc_table.insert(pc_head, pc);
+                this->index_pc_table.insert(hash_index_iPC(this->index_pc_table.get_num_sets(),pc_head,this->pc_index_table.get_i_set(pc)), pc);
             }
             this->pc_index_table.mru(pc);
 
@@ -590,8 +615,8 @@ class ghb_history_table {
                 
                 this->pc_index_table.update(pc,victim_idx);
                 this->page_index_table.update(page_number, victim_idx);
-                this->index_pc_table.erase(pc_head);
-                this->index_pc_table.insert(victim_idx, pc);
+                this->index_pc_table.erase(hash_index_iPC(this->index_pc_table.get_num_sets(),pc_head,this->pc_index_table.get_i_set(pc)));
+                this->index_pc_table.insert(hash_index_iPC(this->index_pc_table.get_num_sets(),victim_idx,this->pc_index_table.get_i_set(pc)), pc);
 
             }else if(is_pc_exist && !is_page_exist){
                 int same_address_idx = this->address_in_pc(pc_head, block_number);
@@ -627,8 +652,8 @@ class ghb_history_table {
                 this->ghb[victim_idx].page_next = this->max_len;
             
                 this->pc_index_table.update(pc,victim_idx);
-                this->index_pc_table.erase(pc_head);
-                this->index_pc_table.insert(victim_idx, pc);
+                this->index_pc_table.erase(hash_index_iPC(this->index_pc_table.get_num_sets(),pc_head,this->pc_index_table.get_i_set(pc)));
+                this->index_pc_table.insert(hash_index_iPC(this->index_pc_table.get_num_sets(),victim_idx,this->pc_index_table.get_i_set(pc)), pc);
             }else{
                 int same_address_idx_pc = this->address_in_pc(pc_head, block_number);
                 int same_address_idx_page = this->address_in_page(page_head, block_number);
@@ -708,8 +733,8 @@ class ghb_history_table {
             }
             if(cnt >= max_his_len){
                 this->pc_index_table.update(pc,this->ghb[pc_head].pc_next);
-                this->index_pc_table.erase(pc_head);
-                this->index_pc_table.insert(this->ghb[pc_head].pc_next, pc);
+                this->index_pc_table.erase(hash_index_iPC(this->index_pc_table.get_num_sets(),pc_head,this->pc_index_table.get_i_set(pc)));
+                this->index_pc_table.insert(hash_index_iPC(this->index_pc_table.get_num_sets(),this->ghb[pc_head].pc_next,this->pc_index_table.get_i_set(pc)), pc);
             }
             return pc_next;
         }
@@ -731,11 +756,11 @@ class ghb_history_table {
             if(pc_head == idx){
                 if(this->ghb[pc_head].pc_next == this->max_len){
                     this->pc_index_table.erase(victim_pc);
-                    this->index_pc_table.erase(idx);
+                    this->index_pc_table.erase(hash_index_iPC(this->index_pc_table.get_num_sets(),idx,this->pc_index_table.get_i_set(victim_pc)));
                 }else{
                     this->pc_index_table.update(victim_pc, this->ghb[pc_head].pc_next);
-                    this->index_pc_table.erase(idx);
-                    this->index_pc_table.insert(this->ghb[pc_head].pc_next, victim_pc);   
+                    this->index_pc_table.erase(hash_index_iPC(this->index_pc_table.get_num_sets(),idx,this->pc_index_table.get_i_set(victim_pc)));
+                    this->index_pc_table.insert(hash_index_iPC(this->index_pc_table.get_num_sets(),this->ghb[pc_head].pc_next,this->pc_index_table.get_i_set(victim_pc)), victim_pc);   
                 }   
             }
             return;
@@ -761,7 +786,13 @@ class ghb_history_table {
             this->tail = (this->tail+1)%this->max_len;
 
             //处理被剔除的项
-            uint64_t victim_pc = this->index_pc_table.find(victim_idx);
+            uint64_t victim_pc = 0;
+            for(int i = 0; i < this->index_pc_table.get_num_sets(); i++){
+                int a_tmp = this->index_pc_table.find(hash_index_iPC(this->index_pc_table.get_num_sets(),victim_idx,i));
+                if( a_tmp != -1){
+                    victim_pc = uint64_t(a_tmp);
+                }
+            }
             // uint64_t victim_pc = this->ghb[victim_idx].pc;
             int victim_pc_head = this->pc_index_table.find(victim_pc);
             if(victim_pc_head != -1){
@@ -866,14 +897,14 @@ bool compareByOnlyConf(const stride_info& s1, const stride_info& s2) {
 class StrideTable : public LRUSetAssociativeCache<StrideTableData> {
     typedef LRUSetAssociativeCache<StrideTableData> Super;
     public:
-        StrideTable(uint64_t page_size, uint64_t pc_size, uint64_t pattern_len, uint64_t stride_num, float l1_thres, float l2_thres, float llc_thres, 
-           int page_confident_max, int page_first) : Super((page_size+pc_size),16) ,
+        StrideTable(uint64_t page_size, uint64_t pc_size, uint64_t pattern_len, uint64_t stride_num,  
+           int page_confident_max, int page_first) : Super((page_size+pc_size),get_3min(pc_size, page_size)) ,
            page_size(page_size),pc_size(pc_size),
-         pattern_len(pattern_len),stride_num(stride_num), 
-         l1_thres(l1_thres), l2_thres(l2_thres), llc_thres(llc_thres),
+         pattern_len(pattern_len),stride_num(stride_num),
          page_confident_max(page_confident_max), page_first(page_first)
         //  , page_l1_thres(page_l1_thres),  page_l2_thres(page_l2_thres), page_l3_thres(page_l3_thres)
         {
+            cerr <<"stride_table" << (page_size+pc_size) << endl;
             cerr<<"PatternAccululateTable sets: "<< num_sets<<" ways: "<<num_ways<<endl;
         }
 
@@ -882,7 +913,7 @@ class StrideTable : public LRUSetAssociativeCache<StrideTableData> {
             uint64_t region_number =  (block_number / this->pattern_len)&PAGE_MASK;
             int region_offset   =  block_number % this->pattern_len;         
             if(is_pc){
-                pc_tag = hash_index(pc_tag,this->page_size,this->pc_size, true);
+                pc_tag = hash_index(pc_tag,this->page_size,this->pc_size, true,this->num_ways);
                 Entry *entry = Super::find(pc_tag);
                 if(!entry){
                     vector<stride_info> add_stride;
@@ -921,7 +952,7 @@ class StrideTable : public LRUSetAssociativeCache<StrideTableData> {
                 return 0;
                 }
             }else{
-                uint64_t region_num= hash_index(region_number, this->page_size,this->pc_size, false);
+                uint64_t region_num= hash_index(region_number, this->page_size,this->pc_size, false,this->num_ways);
                 Entry *entry = Super::find(region_num);
                 if(!entry){
                     vector<stride_info> add_stride;
@@ -967,7 +998,7 @@ class StrideTable : public LRUSetAssociativeCache<StrideTableData> {
             uint64_t region_number =  (block_number / this->pattern_len)&PAGE_MASK;
             int region_offset   =  block_number % this->pattern_len;
             if(is_pc){
-                pc_tag = hash_index(pc_tag,this->page_size,this->pc_size, true);
+                pc_tag = hash_index(pc_tag,this->page_size,this->pc_size, true,this->num_ways);
                 Entry *entry = Super::find(pc_tag);
                 if(entry){
                      if(this->debug_level>=2){
@@ -985,7 +1016,7 @@ class StrideTable : public LRUSetAssociativeCache<StrideTableData> {
                     }
                 }
             }else{
-                uint64_t region_num= hash_index(region_number, this->page_size,this->pc_size, false);
+                uint64_t region_num= hash_index(region_number, this->page_size,this->pc_size, false,this->num_ways);
                 Entry *entry = Super::find(region_num);
                 if(entry){
                     if(this->debug_level>=2){
@@ -1013,7 +1044,11 @@ class StrideTable : public LRUSetAssociativeCache<StrideTableData> {
             uint64_t region_number =  (block_number / this->pattern_len)&PAGE_MASK;
             int region_offset   =  block_number % this->pattern_len;      
             if(is_pc){
-                pc_tag = hash_index(pc_tag,this->page_size,this->pc_size, true);
+                // cout << "num_ways" << this->num_ways << endl;
+                // cout << "pc_size" << this->pc_size << endl;
+                // cout << "page_size" << this->page_size << endl;
+                // cout << "min" << min(min(int(this->pc_size),int(this->page_size)),16) << endl;
+                pc_tag = hash_index(pc_tag,this->page_size,this->pc_size, true,this->num_ways);
                 Entry *entry = Super::find(pc_tag);
                 if (!entry){
                     // return 0;
@@ -1029,11 +1064,11 @@ class StrideTable : public LRUSetAssociativeCache<StrideTableData> {
                             //
                             if(pair.stride!=0 ){
                                 float conf_rate = 1.0*pair.conf/entry->data.total ;
-                                if( conf_rate > l1_thres ){
+                                if( conf_rate > L1_THRESHOLD ){
                                     conf_stride.push_back({pair.stride, pair.conf, L1});
-                                }else if(conf_rate > l2_thres){
+                                }else if(conf_rate > L2_THRESHOLD){
                                     conf_stride.push_back({pair.stride, pair.conf, L2});
-                                }else if(conf_rate > llc_thres){
+                                }else if(conf_rate > LLC_THRESHOLD){
                                     conf_stride.push_back({pair.stride, pair.conf, L2R});
                                 }
                                 else{
@@ -1053,7 +1088,7 @@ class StrideTable : public LRUSetAssociativeCache<StrideTableData> {
                 }
     
             }else{
-                uint64_t region_num= hash_index(region_number,this->page_size,this->pc_size, false);
+                uint64_t region_num= hash_index(region_number,this->page_size,this->pc_size, false,this->num_ways);
                 Entry *entry = Super::find(region_num);       
                 if (!entry){
                     // return 0;
@@ -1062,17 +1097,17 @@ class StrideTable : public LRUSetAssociativeCache<StrideTableData> {
                     }
                     return conf_stride;
                 }else{
-                    std::sort(entry->data.stride_conf.begin(), entry->data.stride_conf.end(), compareByOnlyConf);
+                    //std::sort(entry->data.stride_conf.begin(), entry->data.stride_conf.end(), compareByOnlyConf);
                     if(entry->data.total >= page_first){
                         for ( auto& pair : entry->data.stride_conf) {
                             //
                             if(pair.stride!=0 ){
                                 float conf_rate = 1.0*pair.conf/entry->data.total ;
-                                if( conf_rate > l1_thres ){
+                                if( conf_rate > L1_THRESHOLD ){
                                     conf_stride.push_back({pair.stride, pair.conf, L1});
-                                }else if(conf_rate > l2_thres){
+                                }else if(conf_rate > L2_THRESHOLD){
                                     conf_stride.push_back({pair.stride, pair.conf, L2});
-                                }else if(conf_rate > llc_thres){
+                                }else if(conf_rate > LLC_THRESHOLD){
                                     conf_stride.push_back({pair.stride, pair.conf, L2R});
                                 }
                                 else{
@@ -1097,7 +1132,6 @@ class StrideTable : public LRUSetAssociativeCache<StrideTableData> {
         uint64_t pc_size;
         uint64_t pattern_len;
         uint64_t stride_num;
-        float l1_thres, l2_thres, llc_thres;
         uint64_t page_confident_max, page_first; 
         // float   page_l1_thres, page_l2_thres, page_l3_thres;
 };
@@ -1108,22 +1142,21 @@ class MIX {
 
     MIX(struct PAGE_SETTING setting)
         : setting(setting), pattern_len(setting.REGION_SIZE>>LOG2_BLOCK_SIZE),
-        ghb(setting.GHB_SIZE, 
-        setting.GHB_SIZE, 
-        setting.PC_INDEX_SIZE, 
-        setting.PAGE_INDEX_SIZE, 
-        setting.REGION_SIZE>>LOG2_BLOCK_SIZE, 
-        setting.MAX_HIS_LEN),
+        
 
         st(setting.PAGE_STRIDE_TABLE_SIZE,
         setting.PC_STRIDE_TABLE_SIZE, 
         setting.REGION_SIZE>>LOG2_BLOCK_SIZE, 
         setting.DELTA_NUM, 
-        setting.L1_THRESHOLD, 
-        setting.L2_THRESHOLD, 
-        setting.LLC_THRESHOLD, 
         setting.PAGE_CONFIDENCE_MAX, 
-        setting.PAGE_LANZAR_INT)  
+        setting.PAGE_LANZAR_INT) ,
+       
+        ghb(setting.GHB_SIZE, 
+        setting.GHB_SIZE, 
+        setting.PC_INDEX_SIZE, 
+        setting.PAGE_INDEX_SIZE, 
+        setting.REGION_SIZE>>LOG2_BLOCK_SIZE, 
+        setting.MAX_HIS_LEN)
         {   
         }
     
@@ -1281,6 +1314,8 @@ void CACHE::l1d_prefetcher_initialize()
     spec_intructions_complete = false;
 }
 
+
+
 struct pref_buffer_data
 {   
     uint64_t ip;
@@ -1358,14 +1393,15 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
         for (; i < conf_stride_all.size() && i < setting.ALL_MAX_PF; i++){
             uint64_t p_addr = (line_addr + conf_stride_all[i].stride) << LOG2_BLOCK_SIZE;
             uint64_t p_b_addr = (p_addr >> LOG2_BLOCK_SIZE);
-            if (!latency_table_get(p_addr, cpu)){
-                    int fill_level = FILL_L1;              
-                    if(mshr_load < MSHR_LIMIT && conf_stride_all[i].prefetch_level == L1){
-                        fill_level = FILL_L1;
-                    }else if(conf_stride_all[i].prefetch_level == L2 
-                            || conf_stride_all[i].prefetch_level == L2R){
-                        fill_level = FILL_L2;
-                    }
+            if (1){
+                int fill_level = FILL_L1; 
+                if(conf_stride_all[i].prefetch_level == L1){
+                    fill_level = FILL_L1;
+                }else if(conf_stride_all[i].prefetch_level == L2 
+                        || conf_stride_all[i].prefetch_level == L2R){
+                    fill_level = FILL_L2;
+                }
+                if(total_prefetch < (PQ_SIZE-PQ.occupancy)&&!latency_table_get(p_addr, cpu)){
                     if (prefetch_line(ip, addr, p_addr, fill_level, 1)){
                         // assert(0);
                         berti_launched++;
@@ -1376,35 +1412,33 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit
                         // pref_buffer_data a = {ip, addr,p_addr, fill_level};
                         // pref_buffer.push(a);
                     }
-                    if(mshr_load >= MSHR_LIMIT && conf_stride_all[i].prefetch_level == L1){
-                        while(pref_buffer.size()>=32){
-                            pref_buffer.pop();
-                        }
-                        pref_buffer_data a = {ip, addr,p_addr, L1};
-                        pref_buffer.push(a);
+                }else{
+                    while(pref_buffer.size()>=256){
+                        pref_buffer.pop();
                     }
+                    pref_buffer_data a = {ip, addr,p_addr, fill_level};
+                    pref_buffer.push(a);
+                }
             }
-
         }
+
     }
     else{
         int cnt = 0;
-        while(cnt < setting.ALL_MAX_PF && pref_buffer.size()>0){
+        while(cnt < (PQ_SIZE-PQ.occupancy) && pref_buffer.size()>0){
             pref_buffer_data head = pref_buffer.front();
-            if (!latency_table_get(head.p_addr, cpu)){
-                if(mshr_load < MSHR_LIMIT && head.pref_level == L1){
-                        fill_level = FILL_L1;
-                }else if(head.pref_level == L2 
-                        || head.pref_level == L2R){
-                    fill_level = FILL_L2;
-                }else if(mshr_load >= MSHR_LIMIT && head.pref_level == L1){
-                    return;
-                }
-                if (prefetch_line(head.ip, head.baddr, head.p_addr, head.pref_level, 1)){
+            int fill_level = FILL_L1;
+            if(head.pref_level == L1){
+                    fill_level = FILL_L1;
+            }else {
+                fill_level = FILL_L2;
+            }
+            if(!latency_table_get(head.p_addr, cpu)){
+                if (prefetch_line(head.ip, head.baddr, head.p_addr, fill_level, 1)){
                     cnt ++;       
                 }
-                pref_buffer.pop();
             }
+            pref_buffer.pop();
         }
         
     }

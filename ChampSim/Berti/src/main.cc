@@ -368,6 +368,10 @@ void print_roi_stats(uint32_t cpu, CACHE *cache)
 
 }
 
+void print_roi_stats_DRAM(MEMORY *dram){
+    cout << "MEMORY";
+    cout << " ACCESS: " << setw(10) << dram->ACCESS[1] << endl; 
+}
 
 void print_sim_stats(uint32_t cpu, CACHE *cache)
 {
@@ -1852,6 +1856,7 @@ int main(int argc, char** argv)
 	print_roi_stats(i, &ooo_cpu[i].PTW.PSCL2);
 #endif
         print_roi_stats(i, &uncore.LLC);
+        print_roi_stats_DRAM(&uncore.DRAM);
 
 	//@Vishal: print stats
         cout<<endl;

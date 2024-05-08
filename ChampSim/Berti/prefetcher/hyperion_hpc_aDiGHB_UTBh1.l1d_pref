@@ -20,14 +20,14 @@ struct PAGE_SETTING{
     const uint64_t REGION_SIZE = 32 * 1024;
 
     const int GHB_SIZE = 256; //6*max(pc_page)
-    const int PC_INDEX_SIZE = 16; // 16 32 64 128 256
-    const int PAGE_INDEX_SIZE = 32; // 16 32 64 128 256
+    const int PC_INDEX_SIZE = 32; // 16 32 64 128 256
+    const int PAGE_INDEX_SIZE = 16; // 16 32 64 128 256
     const int MAX_HIS_LEN = 8;
     //索引表的way数是固定的16
 
 
-    const uint64_t PAGE_STRIDE_TABLE_SIZE=64;// follow with page or page*2
-    const uint64_t PC_STRIDE_TABLE_SIZE=16;// follow with pc or pc*2
+    const uint64_t PAGE_STRIDE_TABLE_SIZE = 64;// follow with page or page*2
+    const uint64_t PC_STRIDE_TABLE_SIZE = 16;// follow with pc or pc*2
     const uint64_t DELTA_NUM = 8;
 
 
@@ -1061,7 +1061,7 @@ class StrideTable : public LRUSetAssociativeCache<StrideTableData> {
                     }
                     return conf_stride;
                 }else{
-                    std::sort(entry->data.stride_conf.begin(), entry->data.stride_conf.end(), compareByOnlyConf);
+                    //std::sort(entry->data.stride_conf.begin(), entry->data.stride_conf.end(), compareByOnlyConf);
                     if(entry->data.total >= page_first){
                         for ( auto& pair : entry->data.stride_conf) {
                             //
