@@ -1,19 +1,20 @@
 {
     "simulator_path":"/home/cuiyujie/workspace/prefetch/PMP-main",
-    "baseline_results_dir": "outputsum/output0106/gap",
-    "date":"0315",
-    "results_dir":["outputsum/output0326/gap"],
+    "baseline_results_dir": "outputsum/output0326/gap",
+    "date":"0326",
+    "results_dir":["outputsum/output0326/gap","outputsum/output0106/gap"],
     "stats_dir"  : "evaluationmemtense/gap/all_results",
     "core_num": 1,
     "insts_num": "80M",
     "output_name": "PQ_compare",
     "evaluate_cache": "L2C",
     "benchmark": "spec_mem_tense",
-    "my_prefetcher": "PQ_32_best_final_HPSP_paper",
+    "my_prefetcher": "vberti",
     "output_metrics": [
 
         "IPCI",
         "IPC",
+        "Delta",
         "Global Coverage",
         "L1D Coverage",
         "L1D Accuracy",
@@ -35,24 +36,22 @@
         "LLC Prefetches",
         "LLC traffic",
         "LLC LOAD_ACCURACY",
-        "LLC MPKI"
+        "LLC MPKI",
+        "LLC traffic",
+        "L1I MPKI",
+        "L1D AVERAGE MISS LATENCY",
+        "L1I AVERAGE MISS LATENCY"
 
 
     ],
     
 
     "output_prefetchers": [
-
         "no",
         "mlop_dpc3",
         "ipcp_isca2020",
-        
         "vberti",
-        "hyperion_hpc_aDiGHB_UTBh"
-        
-      
-
-
+        "hyperion_hpc_2table_UTBh1_buffer8_10"
 
     ],
     "output_prefetcher_baseline":[
@@ -95,6 +94,8 @@
         "IPC",
         "IPCI",
         "Global Coverage",
+        "Ave_len_page",
+        "Ave_len_pc",
         "Delta IPCI",
         "Delta",
         "Instructions",
@@ -105,6 +106,10 @@
         "L1D Non-useful Prefetches",
         "L1D traffic",
         "L1D MPKI",
+        "L1I MPKI",
+        "L1I Misses",
+        "L1D AVERAGE MISS LATENCY",
+        "L1I AVERAGE MISS LATENCY",
         "L1D LOAD_Accesses",
         "L1D LOAD_Misses",
         "L1D RFO_Accesses",
@@ -119,6 +124,9 @@
         "L1D LOAD_ACCURACY",
         "L2C Accesses",
         "L2C Misses",
+        "L1D TOTAL_Misses",
+        "L2C TOTAL_Misses",
+        "LLC TOTAL_Misses",
         "L2C Prefetches",
         "L2C Prefetch Hits",
         "L2C Non-useful Prefetches",

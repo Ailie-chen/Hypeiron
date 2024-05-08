@@ -1,9 +1,9 @@
 {
     "simulator_path": "/home/cuiyujie/workspace/prefetch/PMP-main",
     "baseline_results_dir": "outputsum/output0321/ligra",
-    "date": "0322",
+    "date": "0506",
     "results_dir": [
-        "outputsum/output0322/ligra"
+        "outputsum/output0506/ligra"
     ],
     "stats_dir": "evaluationmemtense/ligra/all_results",
     "core_num": 1,
@@ -39,27 +39,14 @@
         "LLC MPKI"
     ],
     "output_prefetchers": [
-        "hyperion_hpc_0.6_0.1",
-        "hyperion_hpc_0.6_0.2",
-        "hyperion_hpc_0.6_0.3",
-        "hyperion_hpc_0.6_0.4",
-        "hyperion_hpc_0.6_0.5",
-        "hyperion_hpc_0.7_0.1",
-        "hyperion_hpc_0.7_0.2",
-        "hyperion_hpc_0.7_0.3",
-        "hyperion_hpc_0.7_0.4",
-        "hyperion_hpc_0.7_0.5",
-        "hyperion_hpc_0.8_0.1",
-        "hyperion_hpc_0.8_0.2",
-        "hyperion_hpc_0.8_0.3",
-        "hyperion_hpc_0.8_0.4",
-        "hyperion_hpc_0.8_0.5",
-        "hyperion_hpc_0.9_0.1",
-        "hyperion_hpc_0.9_0.2",
-        "hyperion_hpc_0.9_0.3",
-        "hyperion_hpc_0.9_0.4",
-        "hyperion_hpc_0.9_0.5",
-        "vberti"
+        "hyperion_hpc_page_size_2",
+        "hyperion_hpc_page_size_4",
+        "hyperion_hpc_page_size_8",
+        "hyperion_hpc_page_size_16",
+        "hyperion_hpc_page_size_32",
+        "hyperion_hpc_page_size_64",
+        "hyperion_hpc_page_size_128",
+        "hyperion_hpc_page_size_256"
     ],
     "output_prefetcher_baseline": [
         "no"

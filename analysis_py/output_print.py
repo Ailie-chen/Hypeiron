@@ -4,14 +4,18 @@ import numpy as np
 import os
 import sys
 
-#dates=["0315"]
-dates=["0315"]
-traces=["spec","spec2k06","spec2k17","ligra","gap"]
+dates=['0326']
+traces=["spec2k06","spec2k17","gap","parsec",'4suites']
+# traces=["spec2k17","parsec"]
 
-# metrics=['IPC','IPCI','L1D LOAD_ACCURACY','L1D MPKI']
-metrics=['Prefetcher','IPCI', "L1D Accuracy"]
-# ,"L2C Accuracy","L2C MPKI","L1D Coverage"]
-# metrics=['Prefetcher','IPCI','Global Coverage',"L1D Coverage", "L1D Accuracy","L2C Accuracy",]
+# traces=["4suites"]
+
+# traces=["spec2k06_4core","spec2k17_4core","gap4core","parsec4core","homo","hete"]
+
+# metrics=['Prefetcher','IPC','IPCI',"L1D Accuracy","L1D Coverage", 'L2C Accuracy','L2C Coverage','LLC Coverage','LLC Accuracy','L1D MPKI','L2C MPKI','LLC MPKI']
+# metrics=['Prefetcher','L1D MPKI',"L1I MPKI","L1D AVERAGE MISS LATENCY","L1I AVERAGE MISS LATENCY"]
+
+metrics=['Prefetcher','IPCI']
 
 
 def print_for_metric(data,trace):
@@ -21,7 +25,8 @@ def print_for_metric(data,trace):
     metric_data = pd.DataFrame(index=prefetcher_range, columns=metrics)
     for row_idx in prefetcher_range:
         if(trace == '4suites'):
-            for metric in metrics + ['L1D MPKI', 'L2C MPKI', 'LLC MPKI']:
+            # for metric in metrics + ['L1D MPKI', 'L2C MPKI', 'LLC MPKI']:
+            for metric in metrics:
                 metric_data_idx = data.iloc[0, :] == metric
                 # Extract and assign the metric data for the current row and metric
                 metric_data.at[row_idx, metric] = data.loc[row_idx, metric_data_idx].values

@@ -22,8 +22,6 @@ from openpyxl.chart import LineChart, Reference
 
 
 #import  draw_figs
-
-
 # ========== SETTINGS ===============
 #嵌套字典，第一层键为trace名称，第二层键为prefetcher名称
 ROI_ORIGIN_STATS: Dict[str, Dict[str, Any]] = {}
@@ -128,7 +126,16 @@ def parse_file(file: str) -> Tuple[str, str, int, Dict[str, Any]]:
             
 
             # print(CONFIGS["evaluate_cache"], line)
-            
+
+            pattern_len_page = "^"+"lu_len_page.*avearege_len_page\s+(\d+\.\d+)"
+            pattern_len_pc = "^"+"lu_len_pc.*avearege_len_pc\s+(\d+\.\d+)"
+            matches_page = re.search(pattern_len_page,line)
+            if matches_page:
+                entry['Ave_len_page'][cpu] = float(matches_page.group(1))
+            matches_pc = re.search(pattern_len_pc, line)
+            if matches_pc:
+                entry['Ave_len_pc'][cpu] = float(matches_pc.group(1))
+                
             for evaluate_cache in ["L1D","L2C","LLC"]:
                 # pattern = '^' + evaluate_cache +'.*'+'LOAD' + '\s+' + 'ACCESS:\s+(\d+)\s+HIT:\s+(\d+)\s+MISS:\s+(\d+)'
                 pattern = '^' + evaluate_cache + '.*' + 'LOAD' + '\s+' + 'ACCESS:\s+(\d+)\s+HIT:\s+(\d+)\s+MISS:\s+(\d+).*MPKI:\s+(\d+\.\d+)'
@@ -140,7 +147,11 @@ def parse_file(file: str) -> Tuple[str, str, int, Dict[str, Any]]:
                     load_mpki = float(matches.group(4))
                     entry[evaluate_cache+" Accesses"][current_cpu] = load_request
                     entry[evaluate_cache+" Misses"][current_cpu] = load_miss
-                    
+                pattern1 = '^' + evaluate_cache + '.*' + 'PREFETCH' + '\s+' + 'ACCESS:\s+(\d+)\s+HIT:\s+(\d+)\s+MISS:\s+(\d+).*MPKI:\s+(\d+\.\d+)'
+                matches1 = re.search(pattern1, line)
+                if matches1:
+                    total_miss = int(matches1.group(3))
+                    entry[evaluate_cache+" TOTAL_Misses"][current_cpu] = total_miss
                 pattern2 = '^' + evaluate_cache + '.*' + 'PREFETCH' + '.*' + 'REQUESTED:\s+(\d+)\s+ISSUED:\s+(\d+)\s+USEFUL:\s+(\d+)\s+USELESS:\s+(\d+)\s*$'
                 matches2 = re.search(pattern2, line)
                 if matches2:
@@ -162,7 +173,25 @@ def parse_file(file: str) -> Tuple[str, str, int, Dict[str, Any]]:
                 matches4 = re.search(pattern4,line)
                 if matches4:
                     entry[evaluate_cache+" LOAD_ACCURACY"][current_cpu] = float(matches4.group(1))
+            for evaluate_cache in ["L1I"]:
+                pattern = '^' + evaluate_cache + '.*' + 'LOAD' + '\s+' + 'ACCESS:\s+(\d+)\s+HIT:\s+(\d+)\s+MISS:\s+(\d+).*MPKI:\s+(\d+\.\d+)'
+                matches = re.search(pattern, line)
+                if matches:
+                    load_request = int(matches.group(1))
+                    load_hit = int(matches.group(2))
+                    load_miss = int(matches.group(3))
+                    load_mpki = float(matches.group(4))
+                    entry[evaluate_cache+" Misses"][current_cpu] = load_miss
 
+                    
+                    if isinstance(entry[evaluate_cache+' Misses'][cpu], str):
+                        entry[evaluate_cache+ ' Misses'][cpu]=1
+                    entry[evaluate_cache+ ' MPKI'][cpu] = 1000.0 * entry[evaluate_cache+' Misses'][cpu] / entry['Instructions'][cpu]
+            for evaluate_cache in ["L1D","L1I"]:
+                pattern = '^' + evaluate_cache + '.*' + 'AVERAGE MISS LATENCY:' + '\s+' + '(\d+\.\d+)'
+                matches = re.search(pattern, line)
+                if matches:
+                    entry[evaluate_cache+ ' AVERAGE MISS LATENCY'][cpu] = float(matches.group(1))
     return trace, prefetcher, cpu, entry
 
 #用多线程来对函数结果进行parse
@@ -242,8 +271,22 @@ def cal_final_results():
                     scale_coef = 1.0 * (baseline[evaluate_cache+' Accesses'][cpu] / entry[evaluate_cache+' Accesses'][cpu])
                     #print(entry[evaluate_cache+' Accesses'][cpu], entry[evaluate_cache+' Prefetches'][cpu], baseline[evaluate_cache+' Accesses'][cpu])
                     
-                    entry[evaluate_cache+' traffic'][cpu] = 1.0 * (entry[evaluate_cache+' Accesses'][cpu] + entry[evaluate_cache+' Prefetches'][cpu])  / baseline[evaluate_cache+' Accesses'][cpu]
-                    
+                    # entry[evaluate_cache+' traffic'][cpu] = 1.0 * (entry[evaluate_cache+' Accesses'][cpu] + entry[evaluate_cache+' Prefetches'][cpu])  / baseline[evaluate_cache+' Accesses'][cpu]
+                    # print(entry[evaluate_cache+" TOTAL_Misses"][cpu])
+                    # print(baseline[evaluate_cache+" TOTAL_Misses"][cpu])
+                    if(entry[evaluate_cache+" TOTAL_Misses"][cpu] == '-'):
+                        entry[evaluate_cache+" TOTAL_Misses"][cpu] = 0
+                    if(baseline[evaluate_cache+" TOTAL_Misses"][cpu] == '-'):
+                        if(entry[evaluate_cache+" TOTAL_Misses"][cpu] == '-'):
+                            entry[evaluate_cache+" TOTAL_Misses"][cpu] = 1
+                        baseline[evaluate_cache+" TOTAL_Misses"][cpu] = 1
+                    if(baseline[evaluate_cache+" TOTAL_Misses"][cpu] == 0 ):
+                        baseline[evaluate_cache+" TOTAL_Misses"][cpu] = entry[evaluate_cache+" TOTAL_Misses"][cpu] 
+                        if(entry[evaluate_cache+" TOTAL_Misses"][cpu] == 0):
+                            baseline[evaluate_cache+" TOTAL_Misses"][cpu] = 1
+
+                    entry[evaluate_cache+' traffic'][cpu] = 1.0 * (entry[evaluate_cache+" TOTAL_Misses"][cpu] + entry[evaluate_cache+" Misses"][cpu])  / (baseline[evaluate_cache+" Misses"][cpu])
+
                     # entry['IPCI Speedup'][cpu] = entry['IPCI'][cpu] - 1
                     if(baseline[evaluate_cache+' Misses'][cpu] == 0 or baseline[evaluate_cache+' Misses'][cpu] == '-'):
                         baseline[evaluate_cache+' Misses'][cpu] = 1
@@ -257,18 +300,22 @@ def cal_final_results():
                     entry[evaluate_cache+ ' Coverage'][cpu] = 1.0 - 1.0 * entry[evaluate_cache+ ' Misses'][cpu] / baseline[evaluate_cache+' Misses'][cpu]
                     
                     entry[evaluate_cache+' Uncovered'][cpu] = 1.0 - entry[evaluate_cache+' Coverage'][cpu]
-                    entry[evaluate_cache+' Overprediction'][cpu] = 1.0 * entry[evaluate_cache+' Non-useful Prefetches'][cpu] / baseline[evaluate_cache+' Misses'][cpu] * scale_coef
+                    entry[evaluate_cache+' Overprediction'][cpu] = 1.0 * entry[evaluate_cache+' Non-useful Prefetches'][cpu] / baseline[evaluate_cache+' Misses'][cpu]
                     
                     if entry[evaluate_cache+' Prefetch Hits'][cpu] + entry[evaluate_cache+' Non-useful Prefetches'][cpu] == 0:
-                        entry[evaluate_cache+' Accuracy'][cpu] = '-'
+                        entry[evaluate_cache+' Accuracy'][cpu] = 1.0
                     else:
                         entry[evaluate_cache+' Accuracy'][cpu] = 1.0 * entry[evaluate_cache+' Prefetch Hits'][cpu] / (entry[evaluate_cache+' Prefetch Hits'][cpu] + entry[evaluate_cache+' Non-useful Prefetches'][cpu])
                     
+                    
                     entry[evaluate_cache+ ' MPKI'][cpu] = 1000.0 * entry[evaluate_cache+' Misses'][cpu] / entry['Instructions'][cpu]
+                    # if(evaluate_cache == 'LLC' and entry[evaluate_cache+ ' MPKI'][cpu] >= 1.0 and prefetcher == 'no'):
+                    #     print(f"\"{trace}\",")
                     # if(prefetcher == 'vberti' and evaluate_cache == 'L1D' and entry[evaluate_cache+ ' MPKI'][cpu] >= 5.0):
                     #     print(f"\"{trace}\",")
+
+                    
                 entry['Global Coverage'][cpu] = entry['L1D Coverage'][cpu] + (1 - entry['L1D Coverage'][cpu] )*(entry['L2C Coverage'][cpu] )
-                
                 if "TIME PC+Address Prefetches" in entry and  entry['TIME PC+Address Prefetches'][cpu] != '-':
                     entry['Prefetches'][cpu] = max(entry['Prefetches'][cpu],1)
                     entry['Non-useful Prefetches'][cpu] = max(entry['Non-useful Prefetches'][cpu],1)
@@ -346,14 +393,15 @@ def cal_final_results():
         for field in CONFIGS["metrics"]:
             if field == 'Each IPC' or "Each IPC" in field:
                 continue
-            if field == 'IPCI':
+            if field == 'IPCI' :
                 # print(entry[field])
                 entry[field] = geo_mean(entry[field])
                 # print(entry[field])
             else:
                 
                 entry[field] = arith_mean(entry[field])
-
+    hyperion_best = 0
+    print(hyperion_best)
     for trace in ROI_ORIGIN_STATS:
         max_ipci = 0
         best_ipc=None
@@ -377,7 +425,10 @@ def cal_final_results():
         entry['Delta IPCI'] = entry['IPCI'] - max_ipci
         if(best_ipc):
             best_prefetcher_entry = ROI_ORIGIN_STATS[trace][best_ipc]
-            best_prefetcher_entry['Delta IPCI'] = max_ipci - entry['IPCI'] 
+            best_prefetcher_entry['Delta IPCI'] = max_ipci - entry['IPCI']
+        if best_ipc == 'hyperion_hpc_2table_UTBh1_buffer8_10':
+            hyperion_best = hyperion_best + 1
+    print(hyperion_best)
    
 # def record_results(sort_item=None):
     # print(CONFIGS["stats_dir"] + '/'+CONFIGS["output_name"] + '.csv')
@@ -637,7 +688,6 @@ def traverse_files_and_call_function(directory):
               
 def bingo_setting(config_name: str, sort_item: Any = None) -> None:
     
-    
     global ROI_ORIGIN_STATS, CONFIGS
     ROI_ORIGIN_STATS.clear()
     CONFIGS.clear()
@@ -660,7 +710,6 @@ def bingo_setting(config_name: str, sort_item: Any = None) -> None:
     # print(ROI_ORIGIN_STATS)      
     
 def bingo_evaluate():
-    
     # traverse_files_and_call_function("spec_all")
 
 
@@ -669,61 +718,20 @@ def bingo_evaluate():
     # exit()
     var=[
         
-        
-    # ("1core_all_max_compare_80M", "output_prefetchers"),
-    # ("1core_all_PQ_32_compare_80M", "output_prefetchers"),
-    # ("4core_all_PQ_32_compare_80M", "output_prefetchers"),
-    #  ("1core_bingo_analyse_80M", "output_prefetchers"),  
-     
-    # ("1core_mpki_spec06_80M", "output_prefetchers"),  
-    # ("1core_mpki_spec17_80M", "output_prefetchers"),  
-    # ("1core_mpki_specall_80M", "output_prefetchers"),  
-     
 
-    #  ("1core_PQ_32_compare_spec17_80M", "output_prefetchers"),
-    
-    
-    
-    # ("1core_all_miss_rate_80M", "output_prefetchers"),
-    
-    #("1core_spec_compare_all_80M", "output_prefetchers"),
-    #("1core_spec2k17_compare_mem_tense","output_prefetchers"),
-    # (f"1core_1pref_spec06","output_prefetchers"),
-    # (f"1core_1pref_spec17","output_prefetchers"),
-    (f"1core_1pref_spec","output_prefetchers"),
     (f"1core_1pref_spec06","output_prefetchers"),
     (f"1core_1pref_spec17","output_prefetchers"),
     (f"1core_1pref_all","output_prefetchers"),
-    (f"1core_1pref_ligra","output_prefetchers"),
+    (f"1core_1pref_parsec","output_prefetchers"),
     (f"1core_1pref_gap","output_prefetchers"),
-    #  (f"1core_1pref_spec","output_prefetchers"),
-    #  (f"1core_1pref_gap","output_prefetchers"),
-    #  (f"1core_1pref_ligra","output_prefetchers"),
-    #  (f"1core_1pref_cs","output_prefetchers"),
-    #  (f"1core_hyperion_tmp","output_prefetchers"),
-    #  (f"1core_hyperion_tmp","output_prefetchers"),
+    # (f"1core_1pref_spec0654","output_prefetchers"),
+    # (f"1core_1pref_spec1754","output_prefetchers"),
+    # (f"1core_1pref_spec17328","output_prefetchers"),
+    # (f"1core_1pref_all54","output_prefetchers"),
+    # (f"1core_1pref_parsec54","output_prefetchers"),
+    # (f"1core_1pref_parsec328","output_prefetchers"),
+    # (f"1core_1pref_gap54","output_prefetchers"),
 
-    # (f"1core_{sys.argv[1]}_compare_all_80M","output_prefetchers"),
-
-    # ("1core_rate", "output_prefetchers"),
-    
-    
-    # ("1core_PQ_32_compare_epoch_80M", "output_prefetchers"),  
-    # ("1core_PQ_32_compare_pht_80M", "output_prefetchers"), 
-    
-    # ("1core_pht_size", "output_prefetchers"), 
-    
-    
-    # ("1core_merge_size", "output_prefetchers"), 
-
-    # ("1core_PQ_32_cloudsuit_mpki_80M", "output_prefetchers"),
-    
-    #  ("1core_PQ_32_cloudsuit_cassandra_80M", "output_prefetchers"),
-    #  ("1core_PQ_32_cloudsuit_classification_80M", "output_prefetchers"),
-    #  ("1core_PQ_32_cloudsuit_cloud9_80M", "output_prefetchers"),
-    #  ("1core_PQ_32_cloudsuit_nutch_80M", "output_prefetchers"),
-    #  ("1core_PQ_32_cloudsuit_streaming_80M", "output_prefetchers"),
-    #  ("1core_PQ_32_cloudsuit_all_80M", "output_prefetchers"),
     
     
 
@@ -737,5 +745,4 @@ def bingo_evaluate():
     traverse_files_and_parse(var);
     # bingo_setting("spec_all/1core_all_hpsp_epoch_80M","output_prefetchers")
 if __name__ == "__main__":
-    
     bingo_evaluate()

@@ -1,8 +1,8 @@
 {
     "simulator_path":"/home/cuiyujie/workspace/prefetch/PMP-main",
-    "baseline_results_dir": "outputsum/output0106/spec",
-    "date":"0315",
-    "results_dir":["outputsum/output0106/spec","outputsum/output0326/spec"
+    "baseline_results_dir": "outputsum/output0326/spec",
+    "date":"0326",
+    "results_dir":["outputsum/output0326/spec","outputsum/output0106/spec"
                 ],
     "stats_dir"  : "evaluationmemtense/spec2k06/all_results",
     "core_num": 1,
@@ -15,7 +15,6 @@
         "IPC",
         "IPCI",
         "Delta",
-        
         "Global Coverage",
         
         
@@ -37,7 +36,11 @@
         "L2C LOAD_ACCURACY",
         "L2C MPKI",
         "LLC Coverage",
-        "LLC MPKI"
+        "LLC MPKI",
+        "LLC traffic",
+        "L1I MPKI",
+        "L1D AVERAGE MISS LATENCY",
+        "L1I AVERAGE MISS LATENCY"
         
 
 
@@ -46,13 +49,11 @@
     
 
     "output_prefetchers": [
-
         "no",
         "mlop_dpc3",
         "ipcp_isca2020",
-        
         "vberti",
-        "hyperion_hpc_aDiGHB_UTBh"
+        "hyperion_hpc_2table_UTBh1_buffer8_10"
         
         
       
@@ -976,6 +977,8 @@
     "metrics": [
         "IPC",
         "IPCI",
+        "Ave_len_page",
+        "Ave_len_pc",
         "Delta IPCI",
         "Delta",
         "Instructions",
@@ -986,11 +989,18 @@
         "L1D Non-useful Prefetches",
         "L1D traffic",
         "L1D MPKI",
+        "L1I MPKI",
+        "L1I Misses",
+        "L1D AVERAGE MISS LATENCY",
+        "L1I AVERAGE MISS LATENCY",
         "Global Coverage",
         "L1D LOAD_Accesses",
         "L1D LOAD_Misses",
         "L1D RFO_Accesses",
         "L1D RFO_Misses",
+        "L1D TOTAL_Misses",
+        "L2C TOTAL_Misses",
+        "LLC TOTAL_Misses",
         "L1D prefetch_time",
         "L1D prefetch_late",
         "L1D Undecided Prefetches",

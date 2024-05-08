@@ -1,7 +1,7 @@
 import os
 
-folder_path = "./traces/spec2k17/"  # 文件夹路径
-output_file = "./traces/spec2k17_name.txt"  # 输出文件路径
+folder_path = "./traces/parsec/"  # 文件夹路径
+output_file = "./traces/parsec_name.txt"  # 输出文件路径
 
 # 遍历文件夹并获取文件名
 file_names = []
@@ -17,8 +17,8 @@ with open(output_file, "r") as file:
     file_names = file.read().splitlines()
 
 # 对文件名进行排序
-sorted_file_names = sorted(file_names, key=lambda x: (int(x.split('.')[0]), x.split('-')[1]))
+# sorted_file_names = sorted(file_names, key=lambda x: (int(x.split('.')[0]), x.split('-')[1]))
 
-# 将排序后的文件名重新写入文本文件
-with open(output_file, "w") as file:
-    file.write("\n".join(sorted_file_names))
+# # 将排序后的文件名重新写入文本文件
+# with open(output_file, "w") as file:
+#     file.write("\n".join(sorted_file_names))

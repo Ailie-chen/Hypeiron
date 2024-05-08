@@ -1,10 +1,10 @@
 {
     "simulator_path":"/home/cuiyujie/workspace/prefetch/PMP-main",
-    "baseline_results_dir": "outputsum/output0107/4core",
-    "date":"0107",
-    "results_dir":["outputsum/output0107/4core"
+    "baseline_results_dir": "outputsum/output0326/4core",
+    "date":"0326",
+    "results_dir":["outputsum/output0326/4core"
                 ],
-    "stats_dir"  : "evaluationmemtense/spec2k17/all_results",
+    "stats_dir"  : "evaluationmemtense/spec4core/all_results",
     "core_num": 4,
     "insts_num": "80M",
     "output_name": "PQ_compare",
@@ -47,11 +47,11 @@
 
     "output_prefetchers": [
 
-        "no",    
         "mlop_dpc3",
-        "ipcp_isca2020", 
+        "ipcp_isca2020",
         "vberti",
-        "hyperion_hpc"
+        "hyperion_hpc_2table_UTBh1_buffer9_2",
+        "hyperion_hpc_2table_UTBh1_buffer8_9"
         
         
       
@@ -64,6 +64,7 @@
 
     ],
     "output_workloads":[
+        "0",
         "1",
         "2",
         "3",
@@ -152,8 +153,7 @@
         "86",
         "87",
         "88",
-        "89",
-        "90"
+        "89"
     
     
     

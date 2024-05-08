@@ -1,11 +1,13 @@
 {
     "simulator_path": "/home/cuiyujie/workspace/prefetch/PMP-main",
-    "baseline_results_dir": "outputsum/output0321/spec",
-    "date": "0323",
+    "baseline_results_dir": "outputsum/output0331/spec",
+    "date": "0331",
     "results_dir": [
-        "outputsum/output0323/spec"
+        "outputsum/output0331/spec",
+        "outputsum/output0331/parsec",
+        "outputsum/output0331/gap"
     ],
-    "stats_dir": "evaluationmemtense/spec/all_results",
+    "stats_dir": "evaluationmemtense/4suites/all_results",
     "core_num": 1,
     "insts_num": "80M",
     "output_name": "PQ_compare",
@@ -33,16 +35,22 @@
         "L2C MPKI",
         "LLC Coverage",
         "LLC MPKI",
+        "LLC traffic",
         "GHB PC OCCUPANCY",
         "GHB PAGE OCCUPANCY"
     ],
     "output_prefetchers": [
-        "hyperion_hpc_aDiGHB_UTBh1_statistic"
+        "hyperion_hpc_2table_hisnum_4",
+        "hyperion_hpc_2table_hisnum_8",
+        "hyperion_hpc_2table_hisnum_16",
+        "hyperion_hpc_2table_hisnum_32",
+        "hyperion_hpc_2table_hisnum_64"
+
     ],
     "output_prefetcher_baseline": [
         "ip_stride"
     ],
-    "output_workloads": [
+    "output_workloads":[
         "403.gcc-17B",
         "410.bwaves-1963B",
         "410.bwaves-2097B",
@@ -84,7 +92,7 @@
         "482.sphinx3-1100B",
         "482.sphinx3-1297B",
         "482.sphinx3-1395B",
-        "482.sphinx3-1522B",
+        "482.sphinx3-1522B", 
         "482.sphinx3-234B",
         "482.sphinx3-417B",
         "483.xalancbmk-127B",
@@ -132,8 +140,49 @@
         "654.roms_s-293B",
         "654.roms_s-294B",
         "654.roms_s-523B",
-        "657.xz_s-2302B"
-    ],
+        "657.xz_s-2302B",
+        "sssp-5",
+        "bfs-14",
+        "sssp-3",
+        "cc-14",
+        "pr-3",
+        "sssp-14",
+        "pr-10",
+        "cc-5",
+        "bc-5",
+        "pr-5",
+        "bc-3",
+        "bfs-3",
+        "cc-6",
+        "cc-13",
+        "sssp-10",
+        "bfs-8",
+        "bc-0",
+        "bfs-10",
+        "bc-12",
+        "pr-14",
+        "parsec_2.1.canneal.simlarge.prebuilt.drop_4750M.length_250M",
+        "parsec_2.1.streamcluster.simlarge.prebuilt.drop_0M.length_250M",
+        "parsec_2.1.canneal.simlarge.prebuilt.drop_500M.length_250M",
+        "parsec_2.1.canneal.simlarge.prebuilt.drop_1250M.length_250M",
+        "parsec_2.1.raytrace.simlarge.prebuilt.drop_23750M.length_250M",
+        "parsec_2.1.streamcluster.simlarge.prebuilt.drop_6250M.length_250M",
+        "parsec_2.1.streamcluster.simlarge.prebuilt.drop_250M.length_250M",
+        "parsec_2.1.facesim.simlarge.prebuilt.drop_21500M.length_250M",
+        "parsec_2.1.canneal.simlarge.prebuilt.drop_5000M.length_15M",
+        "parsec_2.1.canneal.simlarge.prebuilt.drop_4500M.length_250M",
+        "parsec_2.1.canneal.simlarge.prebuilt.drop_0M.length_250M",
+        "parsec_2.1.streamcluster.simlarge.prebuilt.drop_4750M.length_250M",
+        "parsec_2.1.streamcluster.simlarge.prebuilt.drop_14750M.length_250M",
+        "parsec_2.1.raytrace.simlarge.prebuilt.drop_23500M.length_250M",
+        "parsec_2.1.canneal.simlarge.prebuilt.drop_3000M.length_250M",
+        "parsec_2.1.facesim.simlarge.prebuilt.drop_1500M.length_250M"
+    
+    
+    
+    
+    
+],
     "output_workloads_mem_tense": [
         "602.gcc_s-734B",
         "602.gcc_s-1850B",

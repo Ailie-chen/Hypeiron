@@ -689,11 +689,15 @@ def bingo_evaluate():
     #("1core_spec_compare_all_80M", "output_prefetchers"),
     #("1core_spec2k17_compare_mem_tense","output_prefetchers"),
      (f"4core_1pref_hete","output_prefetchers"),
-    #  (f"4core_1pref_homo","output_prefetchers"),
-     (f"4core_1pref_homo_spec","output_prefetchers"),
+     (f"4core_1pref_all","output_prefetchers"),
+
+     (f"4core_1pref_homo","output_prefetchers"),
+     (f"4core_1pref_homo_spec06","output_prefetchers"),
+     (f"4core_1pref_homo_spec17","output_prefetchers"),
+
      (f"4core_1pref_homo_gap","output_prefetchers"),
-     (f"4core_1pref_homo_ligra","output_prefetchers"),
-     (f"4core_1pref_homo_cs","output_prefetchers"),
+     (f"4core_1pref_homo_parsec","output_prefetchers"),
+    #  (f"4core_1pref_homo_cs","output_prefetchers"),
     #  (f"1core_hyperion_tmp","output_prefetchers"),
     #  (f"1core_hyperion_tmp","output_prefetchers"),
 

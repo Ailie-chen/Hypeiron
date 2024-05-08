@@ -1,8 +1,8 @@
 {
     "simulator_path":"/home/cuiyujie/workspace/prefetch/PMP-main",
-    "baseline_results_dir": "outputsum/output0106/spec",
-    "date":"0315",
-    "results_dir":["outputsum/output0326/spec"
+    "baseline_results_dir": "outputsum/output0326/spec",
+    "date":"0326",
+    "results_dir":["outputsum/output0326/spec","outputsum/output0106/spec"
                 ],
     "stats_dir"  : "evaluationmemtense/spec2k17/all_results",
     "core_num": 1,
@@ -15,7 +15,6 @@
         "IPC",
         "IPCI",
         "Delta",
-        
         "Global Coverage",
         
         
@@ -37,8 +36,12 @@
         "L2C LOAD_ACCURACY",
         "L2C MPKI",
         "LLC Coverage",
-        "LLC MPKI"
-        
+        "LLC MPKI",
+        "LLC traffic",
+        "L1I MPKI",
+        "L1D AVERAGE MISS LATENCY",
+        "L1I AVERAGE MISS LATENCY"
+
 
 
 
@@ -46,13 +49,13 @@
     
 
     "output_prefetchers": [
-
         "no",
         "mlop_dpc3",
         "ipcp_isca2020",
-        
         "vberti",
-        "hyperion_hpc_aDiGHB_UTBh"
+        "hyperion_hpc_2table_UTBh1_buffer8_10"
+
+        
         
         
       
@@ -65,22 +68,22 @@
 
     ],
     "output_workloads":[
+        "602.gcc_s-734B",
         "602.gcc_s-1850B",
         "602.gcc_s-2226B",
-        "602.gcc_s-734B",
+        "603.bwaves_s-891B",
         "603.bwaves_s-1740B",
         "603.bwaves_s-2609B",
         "603.bwaves_s-2931B",
-        "603.bwaves_s-891B",
-        "605.mcf_s-1152B",
-        "605.mcf_s-1536B",
-        "605.mcf_s-1554B",
-        "605.mcf_s-1644B",
         "605.mcf_s-472B",
         "605.mcf_s-484B",
         "605.mcf_s-665B",
         "605.mcf_s-782B",
         "605.mcf_s-994B",
+        "605.mcf_s-1152B",
+        "605.mcf_s-1536B",
+        "605.mcf_s-1554B",
+        "605.mcf_s-1644B",
         "607.cactuBSSN_s-2421B",
         "607.cactuBSSN_s-3477B",
         "607.cactuBSSN_s-4004B",
@@ -98,23 +101,20 @@
         "625.x264_s-20B",
         "627.cam4_s-490B",
         "628.pop2_s-17B",
-        "649.fotonik3d_s-10881B",
         "649.fotonik3d_s-1176B",
         "649.fotonik3d_s-7084B",
         "649.fotonik3d_s-8225B",
+        "649.fotonik3d_s-10881B",
+        "654.roms_s-293B",
+        "654.roms_s-294B",
+        "654.roms_s-523B",
         "654.roms_s-1007B",
         "654.roms_s-1070B",
         "654.roms_s-1390B",
         "654.roms_s-1613B",
-        "654.roms_s-293B",
-        "654.roms_s-294B",
-        "654.roms_s-523B",
         "657.xz_s-2302B"
-    
-    
-    
-    
-],
+    ],
+ 
 
 "output_workloads_mem_tense":[
     
@@ -979,15 +979,24 @@
         "IPC",
         "IPCI",
         "Delta IPCI",
+        "Ave_len_page",
+        "Ave_len_pc",
         "Delta",
         "Instructions",
         "L1D Accesses",
         "L1D Misses",
+        "L1D TOTAL_Misses",
+        "L2C TOTAL_Misses",
+        "LLC TOTAL_Misses",
         "L1D Prefetches",
         "L1D Prefetch Hits",
         "L1D Non-useful Prefetches",
         "L1D traffic",
         "L1D MPKI",
+        "L1I MPKI",
+        "L1I Misses",
+        "L1D AVERAGE MISS LATENCY",
+        "L1I AVERAGE MISS LATENCY",
         "Global Coverage",
         "L1D LOAD_Accesses",
         "L1D LOAD_Misses",
