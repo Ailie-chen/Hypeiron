@@ -2,7 +2,7 @@
 
 ### **Brief Introduction:**
 
-This is the repository for a highly effective delta prefetcher. We provide the prefetcher Hyperion, the simulator ChampSim and all the benchmarks used for this project.
+This is the repository for a highly effective delta prefetcher. We provide the prefetcher Hyperion, the simulator ChampSim and all the benchmarks used for this research.
 
 ### Tested Requirements
 
