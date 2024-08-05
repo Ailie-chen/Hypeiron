@@ -21,7 +21,7 @@ We use four benchmark suites to evaluate Hyperion and we provide the links to do
 
 [GAP](https://utexas.app.box.com/s/2k54kp8zvrqdfaa8cdhfquvcxwh7yn85/folder/132804668078)
 
-[Ligra](Pythia/scripts/artifact_traces.csv at master · CMU-SAFARI/Pythia (github.com)(https://github.com/CMU-SAFARI/Pythia/blob/master/scripts/artifact_traces.csv)) (We use the traces provided by [Pythia](https://dl.acm.org/doi/10.1145/3466752.3480114))
+[Ligra](https://github.com/CMU-SAFARI/Pythia/blob/master/scripts/artifact_traces.csv) (We use the traces provided by [Pythia](https://dl.acm.org/doi/10.1145/3466752.3480114))
 
 ### How to run this project?
 
