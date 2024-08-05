@@ -1,0 +1,6 @@
+source thresh_PB_size.sh "compile"
+source thresh_his_num_batch_run.sh "compile"
+source thresh_page_size.sh "compile"
+source thresh_table_size.sh "compile"
+source thresh_batch_run.sh "compile"
+source thresh_page_size.sh "compile"

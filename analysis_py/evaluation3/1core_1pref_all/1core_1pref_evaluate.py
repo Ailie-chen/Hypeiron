@@ -94,14 +94,13 @@ def parse_file(file: str) -> Tuple[str, str, int, Dict[str, Any]]:
         return '', '', -1, {}
 
 
-
     #判断trace是否在output_workloads中，以及output_workloads是否存在 
     trace = match_trace.group(1)
     if not CONFIGS["output_workloads"] or trace not in CONFIGS["output_workloads"]:
         return '', '', -1, {}
     #提取prefetcher并判断
     prefetcher = match_prefetcher.group(1);
-    if prefetcher != 'no' and CONFIGS["output_prefetchers"] and prefetcher not in CONFIGS["output_prefetchers"]:
+    if (prefetcher != 'ip_stride' and prefetcher != 'no' ) and CONFIGS["output_prefetchers"] and prefetcher not in CONFIGS["output_prefetchers"]:
         return '', '', -1, {}
     
     CONFIGS["insts_num"]="80M"
@@ -244,7 +243,7 @@ def geo_mean(x):
 
 def cal_final_results():
     for trace in ROI_ORIGIN_STATS:
-        # print(trace)
+        print(trace)
         baseline = ROI_ORIGIN_STATS[trace]["no"]
 
         # print(ROI_ORIGIN_STATS[trace]['no'])

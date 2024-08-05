@@ -795,6 +795,7 @@ if __name__ == "__main__":
    
     plt.savefig(f'{figure_res}/dse.png',dpi=800, format="png", bbox_inches='tight') 
     plt.savefig(f'{figure_res}/dse.pdf',dpi=800, format="pdf", bbox_inches='tight') 
+    plt.savefig(f'{figure_res}/dse.eps',dpi=300, format="eps", bbox_inches='tight') 
     plt.close()   
 
         

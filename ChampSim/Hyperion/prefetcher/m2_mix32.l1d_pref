@@ -1,0 +1,2480 @@
+#include "m2_pc16.h"
+#include "bingo_frame.h"
+#define LANZAR_INT 8
+
+// Last edit: 27 - Sept - 2021 12:10
+
+// FIFO queue
+//#define SIZE_RR 16
+//uint64_t RR[NUM_CPUS][SIZE_RR] = {0};
+//uint64_t RR_cycle[NUM_CPUS][SIZE_RR] = {0};
+//uint64_t RR_dx[NUM_CPUS] = {0};
+#define PAGE
+#define PAGE_PREF
+// #define OFFSET
+// #define GLOBAL
+bool spec_intructions_complete;
+uint64_t global_first_offset;
+struct PAGE_SETTING{
+    const uint64_t REGION_SIZE = 4 * 1024;
+    const uint64_t PAGE_ACCUMULATE_TABLE=16;
+    const uint64_t OFFSET_RECORD_NUMBER=16;
+    const uint64_t PAGE_STRIDE_TABLE=16;
+    const uint64_t PAGE_STRIDE_NUMBER=16;
+    const float PAGE_L1_THRESHOLD=0.65;
+    const float PAGE_L2_THRESHOLD=0.20;
+    const float PAGE_LLC_THRESHOLD=0.20;
+
+    const uint64_t OFFSET_ACCUMULATE_TABLE=64;
+    const uint64_t OFFSET_STRIDE_TABLE=64;
+    const uint64_t OFFSET_STRIDE_NUMBER=16;
+    const float OFFSET_L1_THRESHOLD=2.0;
+    const float OFFSET_L2_THRESHOLD=2.0;
+    const float OFFSET_LLC_THRESHOLD=2.0;
+
+    const uint64_t STRIDE_COUNT_TABLE=32;
+
+    const uint64_t GLOBAL_ACCUMULATE_TABLE = 1;
+    const uint64_t GLOBAL_RECORD_NUMBER = 64;
+    const uint64_t GLOBAL_STRIDE_TABLE = 1;
+    const uint64_t GLOBAL_STRIDE_NUMBER = 16; 
+    const float GLOBAL_L1_THRESHOLD=2.0;
+    const float GLOBAL_L2_THRESHOLD=2.0;
+    const float GLOBAL_LLC_THRESHOLD=2.0;   
+
+    const uint64_t INTERVAL=100;
+
+
+
+    // const float GLOBAL_STRIDE_THRESHOLD=0.65;
+    const float GLOBAL_STRIDE_THRESHOLD=2.0;
+    const float GLOBAL_STRIDE_THRESHOLD_LLC=GLOBAL_STRIDE_THRESHOLD;
+    const int MAX_PF_S = 16;
+    const int MAX_PF_LAUNCH_S = 6;
+    const int PAGE_MAX_PF_LAUNCH_S = 8;
+    const int ALL_MAX_PF = 12;
+    const uint64_t PAGE_CONFIDENCE_MAX = 16;
+    const uint64_t PAGE_LANZAR_INT = 8;
+
+
+
+    void print(){
+            cerr  << "====================================================="<<endl;
+            cerr  <<  "PAGE_ACCUMULATE_TABLE:         "   <<PAGE_ACCUMULATE_TABLE<<endl;
+            cerr  << "====================================================="<<endl;
+    }
+
+};
+
+struct global_setting{
+    const uint64_t GLOBAL_HISTORY_NUMBER = 16;
+};
+
+
+struct Berti_SETTING{
+    const uint64_t CONFIDENCE_INC_S = 1;
+    const uint64_t CONFIDENCE_INIT_S = 1;
+    const int CONFIDENCE_L1_S = 65;
+    const uint64_t CONFIDENCE_L2_S = 50;
+    const uint64_t CONFIDENCE_L2R_S = 35;
+    const uint64_t HISTORY_TABLE_SET_S = 32;
+    const uint64_t HISTORY_TABLE_WAY_S = 64;
+    const uint64_t TABLE_SET_MASK_S = (1<<HISTORY_TABLE_SET_S)-1;
+    const uint64_t BERTI_TABLE_SIZE_S = 64;
+    const uint64_t BERTI_TABLE_STRIDE_SIZE_S = 16;
+};
+struct stride_info {
+    int64_t stride;
+    uint64_t conf;
+    uint64_t prefetch_level; 
+    uint64_t lru;
+};
+struct _Strides{
+    vector<stride_info> conf_page_stride;
+    vector<stride_info> conf_offset_stride;
+    vector<stride_info> conf_global_stride;
+};
+
+struct Berti_SETTING berti_setting;
+
+struct stat_info{
+    uint64_t ip_prefetch_nums;
+    uint64_t page_prefetch_nums;
+    uint64_t global_prefetch_nums;
+    uint64_t prefetch_times;
+
+    vector<uint64_t> ips;
+    vector<uint64_t> pages;
+
+    float mshr_occupancy;
+    uint64_t access_times;
+
+    uint64_t get_vector_max(vector<uint64_t> numbers){
+        uint64_t maxIndex = 0;
+        uint64_t maxValue = numbers[0];
+        
+        for (uint64_t i = 1; i < numbers.size(); i++) {
+            if (numbers[i] > maxValue) {
+                maxValue = numbers[i];
+                maxIndex = i;
+            }
+        }
+        return maxIndex;
+    }
+
+
+    uint64_t berti_long; //访问delta table，对应条目的总访问次数小于16
+    bool berti_long_true;
+    uint64_t berti_get;   //访问delta table，里面有一个条目
+    uint64_t berti_access;//访问delta table总次数
+    uint64_t berti_conf;//有conf delta的访问次数
+    bool berti_conf_true;
+
+    
+
+    uint64_t page_long;
+    bool page_long_true;
+    uint64_t page_get;
+    uint64_t page_access;
+    uint64_t page_conf;
+    bool page_conf_true;
+
+    uint64_t offset_long;
+    bool offset_long_true;
+    uint64_t offset_get;
+    uint64_t offset_access;
+    uint64_t offset_conf;
+    bool offset_conf_true;
+
+    uint64_t global_long;
+    bool global_long_true;
+    uint64_t global_get;
+    uint64_t global_access;
+    uint64_t global_conf;
+    bool global_conf_true;
+
+    uint64_t all_long;
+    uint64_t all_conf;
+
+
+    void reset(){
+        ip_prefetch_nums = 0;
+        page_prefetch_nums = 0;
+        global_prefetch_nums = 0;
+        prefetch_times = 0;
+        for(int i =0; i<16;i++){
+            ips.push_back(0);
+            pages.push_back(0);
+        }
+        mshr_occupancy = 0;
+        access_times=0;
+    
+    berti_long = 0;
+    berti_long_true = false;
+    berti_get = 0;
+    berti_access = 0;
+    berti_conf = 0;
+    berti_conf_true= false;
+
+
+
+    page_long = 0;
+    page_long_true = false;
+    page_get = 0;
+    page_access = 0;
+    page_conf = 0;
+    page_conf_true = false;
+
+    offset_long = 0;
+    offset_long_true = false;
+    offset_get = 0;
+    offset_access = 0;
+    offset_conf = 0;
+    offset_conf_true = false;
+
+    global_long = 0;
+    global_long_true = false;
+    global_get = 0;
+    global_access = 0;
+    global_conf = 0;
+    global_conf_true = false;
+
+    all_long = 0;
+    all_conf = 0;
+    }
+
+    
+};
+struct stat_info stat;
+uint8_t warmup_flag_l1 = 0;
+
+void notify_prefetch(uint64_t addr, uint64_t tag, uint32_t cpu, uint64_t cycle)
+{
+    //这个是预取时，进入到缺失状态寄存器的时间
+    latency_table_add(addr, tag, cpu, 0, cycle & TIME_MASK);
+}
+
+bool compare_greater_stride_t(stride_t a, stride_t b)
+{
+    if (a.rpl == L1 && b.rpl != L1) return 1;
+    else if (a.rpl != L1 && b.rpl == L1) return 0;
+    else
+    {
+        if (a.rpl == L2 && b.rpl != L2) return 1;
+        else if (a.rpl != L2 && b.rpl == L2) return 0;
+        else
+        {
+            if (a.rpl == L2R && b.rpl != L2R) return 1;
+            if (a.rpl != L2R && b.rpl == L2R) return 0;
+            else
+            {
+                if (std::abs(a.stride) < std::abs(b.stride)) return 1;
+                return 0;
+            }
+        }
+    }
+}
+
+bool compare_greater_stride_t_per(stride_t a, stride_t b)
+{
+    if (a.per > b.per) return 1;
+    else
+    {
+        if (std::abs(a.stride) < std::abs(b.stride)) return 1;
+        return 0;
+    }
+}
+
+/******************************************************************************/
+/*                      Latency table functions                               */
+/******************************************************************************/
+void latency_table_init(uint32_t cpu)
+{
+    /*
+     * Init pqmshr (latency) table
+     *
+     * Parameters:
+     *      - cpu: cpu
+     */
+    for (uint32_t i = 0; i < LATENCY_TABLE_SIZE; i++)
+    {
+        latencyt[cpu][i].tag  = 0;
+        latencyt[cpu][i].addr = 0;
+        latencyt[cpu][i].time = 0;
+        latencyt[cpu][i].pf   = 0;
+    }
+}
+
+uint64_t latency_table_get_ip(uint64_t line_addr, uint32_t cpu)
+{
+    /*
+     * Return 1 or 0 if the addr is or is not in the pqmshr (latency) table
+     *
+     * Parameters:
+     *  - line_addr: address without cache offset
+     *  - cpu: actual cpu
+     *
+     * Return: 1 if the line is in the latency table, otherwise 0
+     */
+
+    for (uint32_t i = 0; i < LATENCY_TABLE_SIZE; i++)
+    {
+        // Search if the line_addr already exists
+        if (latencyt[cpu][i].addr == line_addr && latencyt[cpu][i].tag) 
+            return latencyt[cpu][i].tag;
+    }
+
+    return 0;
+}
+
+uint8_t latency_table_add(uint64_t line_addr, uint64_t tag, uint32_t cpu, 
+        uint8_t pf)
+{
+    /*
+     * Save if possible the new miss into the pqmshr (latency) table
+     *
+     * Parameters:
+     *  - line_addr: address without cache offset
+     *  - cpu: actual cpu
+     *  - access: is the entry accessed by a demand request
+     */
+    return latency_table_add(line_addr, tag, cpu, pf, current_core_cycle[cpu] & TIME_MASK);
+}
+
+uint8_t latency_table_add(uint64_t line_addr, uint64_t tag, uint32_t cpu, 
+        uint8_t pf, uint64_t cycle)
+{
+    /*
+     * Save if possible the new miss into the pqmshr (latency) table
+     *
+     * Parameters:
+     *  - line_addr: address without cache offset
+     *  - cpu: actual cpu
+     *  - access: is theh entry accessed by a demand request
+     *  - cycle: time to use in the latency table
+     *
+     * Return: 1 if the addr already exist, otherwise 0.
+     */
+
+    latency_table_t *free;
+    free = nullptr;
+
+    for (uint32_t i = 0; i < LATENCY_TABLE_SIZE; i++)
+    {
+        // Search if the line_addr already exists. If it exist we does not have
+        // to do nothing more
+        if (latencyt[cpu][i].addr == line_addr) 
+        {
+            latencyt[cpu][i].time = cycle;
+            latencyt[cpu][i].tag  = tag;
+            latencyt[cpu][i].pf   = pf;
+            return latencyt[cpu][i].pf;
+        }
+
+        // We discover a free space into the latency table, save it for later
+        //if (latencyt[cpu][i].addr == 0) free = &latencyt[cpu][i];
+        if (latencyt[cpu][i].tag == 0) free = &latencyt[cpu][i];
+    }
+
+    // No free space!! This cannot be truth
+    if (free == nullptr) return 0;
+
+    // We save the new entry into the latency table
+    free->addr = line_addr;
+    free->time = cycle;
+    free->tag  = tag;
+    free->pf   = pf;
+
+    return free->pf;
+}
+
+uint64_t latency_table_del(uint64_t line_addr, uint32_t cpu)
+{
+    /*
+     * Remove the address from the latency table
+     *
+     * Parameters:
+     *  - line_addr: address without cache offset
+     *  - cpu: actual cpu
+     *
+     *  Return: the latency of the address
+     */
+    for (uint32_t i = 0; i < LATENCY_TABLE_SIZE; i++)
+    {
+        // Line already in the table
+        if (latencyt[cpu][i].addr == line_addr)
+        {
+            uint64_t latency = (current_core_cycle[cpu] & TIME_MASK)
+                - latencyt[cpu][i].time; // Calculate latency
+
+            //latencyt[cpu][i].addr = 0; // Free the entry
+            latencyt[cpu][i].tag  = 0; // Free the entry
+            latencyt[cpu][i].time = 0; // Free the entry
+            latencyt[cpu][i].pf   = 0; // Free the entry
+
+            // Return the latency
+            return latency;
+        }
+    }
+
+    // We should always track the misses
+    //assert(0);
+    return 0;
+}
+
+uint64_t latency_table_get(uint64_t line_addr, uint32_t cpu)
+{
+    /*
+     * Return 1 or 0 if the addr is or is not in the pqmshr (latency) table
+     *
+     * Parameters:
+     *  - line_addr: address without cache offset
+     *  - cpu: actual cpu
+     *
+     * Return: 1 if the line is in the latency table, otherwise 0
+     */
+
+    for (uint32_t i = 0; i < LATENCY_TABLE_SIZE; i++)
+    {
+        // Search if the line_addr already exists
+        if (latencyt[cpu][i].addr == line_addr) return latencyt[cpu][i].time;
+    }
+
+    return 0;
+}
+
+/******************************************************************************/
+/*                       Shadow Cache functions                               */
+/******************************************************************************/
+void shadow_cache_init(uint32_t cpu)
+{
+    /*
+     * Init shadow cache
+     *
+     * Parameters:
+     *      - cpu: cpu
+     */
+    for (uint8_t i = 0; i < L1D_SET; i++)
+    {
+        for (uint8_t ii = 0; ii < L1D_WAY; ii++)
+        {
+            scache[cpu][i][ii].addr = 0;
+            scache[cpu][i][ii].lat  = 0;
+            scache[cpu][i][ii].pf   = 0;
+        }
+    }
+}
+
+uint8_t shadow_cache_add(uint32_t cpu, uint32_t set, uint32_t way, 
+        uint64_t line_addr, uint8_t pf, uint64_t latency)
+{
+    /*
+     * Add block to shadow cache
+     *
+     * Parameters:
+     *      - cpu: cpu
+     *      - set: cache set
+     *      - way: cache way
+     *      - addr: cache block v_addr
+     *      - access: the cache is access by a demand
+     */
+    scache[cpu][set][way].addr = line_addr;
+    scache[cpu][set][way].pf   = pf;
+    scache[cpu][set][way].lat  = latency;
+    return scache[cpu][set][way].pf;
+}
+
+uint8_t shadow_cache_get(uint32_t cpu, uint64_t line_addr)
+{
+    /*
+     * Init shadow cache
+     *
+     * Parameters:
+     *      - cpu: cpu
+     *      - addr: cache block v_addr
+     *
+     * Return: 1 if the addr is in the l1d cache, 0 otherwise
+     */
+
+    for (uint32_t i = 0; i < L1D_SET; i++)
+    {
+        for (uint32_t ii = 0; ii < L1D_WAY; ii++)
+        {
+            if (scache[cpu][i][ii].addr == line_addr) return 1;
+        }
+    }
+
+    return 0;
+}
+
+uint8_t shadow_cache_pf(uint32_t cpu, uint64_t line_addr)
+{
+    /*
+     * Init shadow cache
+     *
+     * Parameters:
+     *      - cpu: cpu
+     *      - addr: cache block v_addr
+     *
+     * Return: 1 if the addr is in the l1d cache, 0 otherwise
+     */
+
+    for (uint32_t i = 0; i < L1D_SET; i++)
+    {
+        for (uint32_t ii = 0; ii < L1D_WAY; ii++)
+        {
+            if (scache[cpu][i][ii].addr == line_addr) 
+            {
+                scache[cpu][i][ii].pf = 0;
+                return 1;
+            }
+        }
+    }
+
+    return 0;
+}
+
+uint8_t shadow_cache_is_pf(uint32_t cpu, uint64_t line_addr)
+{
+    /*
+     * Init shadow cache
+     *
+     * Parameters:
+     *      - cpu: cpu
+     *      - addr: cache block v_addr
+     *
+     * Return: 1 if the addr is in the l1d cache, 0 otherwise
+     */
+
+    for (uint32_t i = 0; i < L1D_SET; i++)
+    {
+        for (uint32_t ii = 0; ii < L1D_WAY; ii++)
+        {
+            if (scache[cpu][i][ii].addr == line_addr) return scache[cpu][i][ii].pf;
+        }
+    }
+
+    return 0;
+}
+
+uint8_t shadow_cache_latency(uint32_t cpu, uint64_t line_addr)
+{
+    /*
+     * Init shadow cache
+     *
+     * Parameters:
+     *      - cpu: cpu
+     *      - addr: cache block v_addr
+     *
+     * Return: 1 if the addr is in the l1d cache, 0 otherwise
+     */
+
+    for (uint32_t i = 0; i < L1D_SET; i++)
+    {
+        for (uint32_t ii = 0; ii < L1D_WAY; ii++)
+        {
+            if (scache[cpu][i][ii].addr == line_addr) return scache[cpu][i][ii].lat;
+        }
+    }
+    assert(0);
+    return 0;
+}
+
+
+/******************************************************************************/
+/*                       History Table functions                               */
+/******************************************************************************/
+// Auxiliar history table functions
+void history_table_init(uint32_t cpu)
+{
+    /*
+     * Initialize history table pointers
+     *
+     * Parameters:
+     *      - cpu: cpu
+     */
+    for (uint32_t i = 0; i < HISTORY_TABLE_SET; i++) 
+    {
+        // Pointer to the first element
+        history_pointers[cpu][i] = historyt[cpu][i];
+
+        for (uint32_t ii = 0; ii < HISTORY_TABLE_WAY; ii++) 
+        {
+            historyt[cpu][i][ii].tag = 0;
+            historyt[cpu][i][ii].time = 0;
+            historyt[cpu][i][ii].addr = 0;
+        }
+    }
+}
+
+void history_table_add(uint64_t tag, uint32_t cpu, uint64_t addr)
+{
+    /*
+     * Save the new information into the history table
+     *
+     * Parameters:
+     *  - tag: PC tag
+     *  - cpu: actual cpu
+     *  - addr: ip addr access
+     */
+    uint16_t set = tag & TABLE_SET_MASK;
+    addr &= ADDR_MASK;
+
+    uint64_t cycle = current_core_cycle[cpu] & TIME_MASK;
+    // Save new element into the history table
+    history_pointers[cpu][set]->tag       = tag;
+    history_pointers[cpu][set]->time      = cycle;
+    history_pointers[cpu][set]->addr      = addr;
+
+    if (history_pointers[cpu][set] == &historyt[cpu][set][HISTORY_TABLE_WAY - 1])
+    {
+        history_pointers[cpu][set] = &historyt[cpu][set][0]; // End the cycle
+    } else history_pointers[cpu][set]++; // Pointer to the next (oldest) entry
+}
+
+uint16_t history_table_get_aux(uint32_t cpu, uint32_t latency, 
+        uint64_t tag, uint64_t act_addr, uint64_t ip[HISTORY_TABLE_WAY],
+        uint64_t addr[HISTORY_TABLE_WAY], uint64_t cycle)
+{
+    uint16_t num_on_time = 0;
+    uint16_t set = tag & TABLE_SET_MASK;
+
+    // The IPs that is launch in this cycle will be able to launch this prefetch
+    if (cycle < latency) return num_on_time;
+    cycle -= latency; 
+
+    // Pointer to guide
+    history_table_t *pointer = history_pointers[cpu][set];
+
+    do
+    {
+        // Look for the IPs that can launch this prefetch
+        if (pointer->tag == tag && pointer->time <= cycle)
+        {
+            // Test that addr is not duplicated
+            if (pointer->addr == act_addr) return num_on_time;
+
+            int found = 0;
+            for (int i = 0; i < num_on_time; i++)
+            {
+                if (pointer->addr == addr[i]) return num_on_time;
+            }
+
+            // This IP can launch the prefetch
+            ip[num_on_time]   = pointer->tag;
+            addr[num_on_time] = pointer->addr;
+            num_on_time++;
+        }
+
+        if (pointer == historyt[cpu][set])
+        {
+            pointer = &historyt[cpu][set][HISTORY_TABLE_WAY - 1];
+        } else pointer--;
+    } while (pointer != history_pointers[cpu][set]);
+
+    return num_on_time;
+}
+
+uint16_t history_table_get(uint32_t cpu, uint32_t latency, 
+        uint64_t tag, uint64_t act_addr,
+        uint64_t ip[HISTORY_TABLE_WAY],
+        uint64_t addr[HISTORY_TABLE_WAY], 
+        uint64_t cycle)
+{
+    /*
+     * Return an array (by parameter) with all the possible PC that can launch
+     * an on-time and late prefetch
+     *
+     * Parameters:
+     *  - tag: PC tag
+     *  - cpu: actual cpu
+     *  - latency: latency of the processor
+     *  - on_time_ip (out): ips that can launch an on-time prefetch
+     *  - on_time_addr (out): addr that can launch an on-time prefetch
+     *  - num_on_time (out): number of ips that can launch an on-time prefetch
+     */
+
+    act_addr &= ADDR_MASK;
+
+    uint16_t num_on_time = history_table_get_aux(cpu, latency, tag, act_addr, 
+            ip, addr, cycle);
+
+    // We found on-time prefetchs
+    return num_on_time;
+}
+
+/******************************************************************************/
+/*                      Latency table functions                               */
+/******************************************************************************/
+// Auxiliar history table functions
+void vberti_increase_conf_ip(uint64_t tag, uint32_t cpu)
+{
+    if (vbertit[cpu].find(tag) == vbertit[cpu].end()) return;
+
+    vberti_t *tmp = vbertit[cpu][tag];
+    stride_t *aux = tmp->stride;
+
+    tmp->conf += CONFIDENCE_INC;
+    tmp->access += CONFIDENCE_INC;
+    if (tmp->conf == CONFIDENCE_MAX) 
+    {
+
+        // Max confidence achieve
+        for(int i = 0; i < BERTI_TABLE_STRIDE_SIZE; i++)
+        {
+            float temp = (float) aux[i].conf / (float) tmp->conf;
+            uint64_t aux_conf   = (uint64_t) (temp * 100);
+
+            // Set bits
+            if (aux_conf > berti_setting.CONFIDENCE_L1_S) aux[i].rpl = L1;
+            else if (aux_conf >  berti_setting.CONFIDENCE_L2_S) aux[i].rpl = L2;
+            else if (aux_conf > berti_setting.CONFIDENCE_L2R_S) aux[i].rpl = L2R;
+            else aux[i].rpl = R;
+            
+            aux[i].conf = 0;
+        }
+
+        tmp->conf = 0;
+    }
+}
+
+void vberti_table_add(uint64_t tag, uint32_t cpu, int64_t stride)
+{
+    /*
+     * Save the new information into the history table
+     *
+     * Parameters:
+     *  - tag: PC tag
+     *  - cpu: actual cpu
+     *  - stride: actual cpu
+     */
+    if (vbertit[cpu].find(tag) == vbertit[cpu].end())
+    {
+        // FIFO MAP
+        if (vbertit_queue[cpu].size() > BERTI_TABLE_SIZE)
+        {
+            uint64_t key = vbertit_queue[cpu].front();
+            vberti_t *tmp = vbertit[cpu][key];
+            delete tmp->stride;
+            delete tmp;
+            vbertit[cpu].erase(vbertit_queue[cpu].front());
+            vbertit_queue[cpu].pop();
+        }
+        vbertit_queue[cpu].push(tag);
+
+        assert(vbertit[cpu].size() <= BERTI_TABLE_SIZE);
+
+        vberti_t *tmp = new vberti_t;
+        tmp->stride = new stride_t[BERTI_TABLE_STRIDE_SIZE]();
+        
+        // Confidence IP
+        tmp->conf = CONFIDENCE_INC;
+        tmp->access = CONFIDENCE_INC;
+        // Create new stride
+        tmp->stride[0].stride = stride;
+        tmp->stride[0].conf = CONFIDENCE_INIT;
+        tmp->stride[0].rpl = R;
+
+        // Save value
+        vbertit[cpu].insert(make_pair(tag, tmp));
+        return;
+    }
+
+    vberti_t *tmp = vbertit[cpu][tag];
+    stride_t *aux = tmp->stride;
+
+    // Increase IP confidence
+    uint8_t max = 0;
+
+    for (int i = 0; i < BERTI_TABLE_STRIDE_SIZE; i++)
+    {
+        if (aux[i].stride == stride)
+        {
+            aux[i].conf += CONFIDENCE_INC;
+            if (aux[i].conf > CONFIDENCE_MAX) aux[i].conf = CONFIDENCE_MAX;
+            return;
+        }
+    }
+
+    uint8_t dx_conf = 100;
+    int dx_remove = -1;
+    for (int i = 0; i < BERTI_TABLE_STRIDE_SIZE; i++)
+    {
+        if (aux[i].rpl == R && aux[i].conf < dx_conf)
+        {
+            dx_conf = aux[i].conf;
+            dx_remove = i;
+        }
+    }
+
+    if (dx_remove > -1)
+    {
+        tmp->stride[dx_remove].stride = stride;
+        tmp->stride[dx_remove].conf   = CONFIDENCE_INIT;
+        tmp->stride[dx_remove].rpl    = R;
+        return;
+    } else
+    {
+        for (int i = 0; i < BERTI_TABLE_STRIDE_SIZE; i++)
+        {
+            if (aux[i].rpl == L2R && aux[i].conf < dx_conf)
+            {
+                dx_conf = aux[i].conf;
+                dx_remove = i;
+            }
+            //if (aux[i].rpl == L2R)
+            //{
+            //    tmp->stride[i].stride = stride;
+            //    tmp->stride[i].conf   = CONFIDENCE_INIT;
+            //    tmp->stride[i].rpl    = R;
+            //    return;
+            //}
+        }
+        if (dx_remove > -1)
+        {
+            tmp->stride[dx_remove].stride = stride;
+            tmp->stride[dx_remove].conf   = CONFIDENCE_INIT;
+            tmp->stride[dx_remove].rpl    = R;
+            return;
+        }
+    }
+}
+
+uint8_t vberti_table_get(uint64_t tag, uint32_t cpu, stride_t res[MAX_PF])
+{
+    /*
+     * Save the new information into the history table
+     *
+     * Parameters:
+     *  - tag: PC tag
+     *  - cpu: actual cpu
+     *
+     * Return: the stride to prefetch
+     */
+     stat.berti_access += 1;
+    if (!vbertit[cpu].count(tag)) return 0;
+    stat.berti_get += 1;
+
+
+    vberti_t *tmp = vbertit[cpu][tag];
+    stride_t *aux = tmp->stride;
+    uint64_t max_conf = 0;
+    uint16_t dx = 0;
+    uint16_t conf_dx = 0;
+    //统计子序列的长度是否足够
+    if(tmp->access >= 8){
+        stat.berti_long += 1;
+        stat.berti_long_true = true;
+    }
+    for (int i = 0; i < BERTI_TABLE_STRIDE_SIZE; i++)
+    {
+        if (aux[i].stride != 0 && aux[i].rpl)
+        {
+            // Substitue min confidence for the next one
+            res[dx].stride = aux[i].stride;
+            res[dx].rpl = aux[i].rpl;
+            dx++;
+            if(aux[i].rpl == L1){
+                conf_dx++;
+            }
+            
+        }
+    }
+    //统计是否存在conf_delta
+    
+
+    if (dx == 0 && tmp->conf >= LANZAR_INT)
+    {
+        for (int i = 0; i < BERTI_TABLE_STRIDE_SIZE; i++)
+        {
+            if (aux[i].stride != 0)
+            {
+                // Substitue min confidence for the next one
+                res[dx].stride = aux[i].stride;
+                float temp = (float) aux[i].conf / (float) tmp->conf;
+                uint64_t aux_conf   = (uint64_t) (temp * 100);
+                res[dx].per = aux_conf;
+                dx++;
+            }
+        }
+        //对前MAX+PF个元素进行排序，按照置信度
+        sort(res, res + MAX_PF, compare_greater_stride_t_per);
+
+        for (int i = 0; i < MAX_PF; i++)
+        {
+            if (res[i].per > 80) {
+                res[i].rpl = L1;
+                conf_dx++;
+            }
+            else if (res[i].per > 80) res[i].rpl = L2;
+            //if (res[i].per > 80) res[i].rpl = L2;
+            else res[i].rpl = R;
+        }
+        //按照存放的cache进行排序
+    }
+    if(conf_dx > 0){
+        stat.berti_conf += 1;
+        stat.berti_conf_true = true;
+    }
+    sort(res, res + MAX_PF, compare_greater_stride_t);
+
+    return 1;
+}
+
+void find_and_update(uint32_t cpu, uint64_t latency, uint64_t tag, 
+        uint64_t cycle, uint64_t line_addr)
+{ 
+    // We were tracking this miss
+    uint64_t ip[HISTORY_TABLE_WAY];
+    uint64_t addr[HISTORY_TABLE_WAY];
+    uint16_t num_on_time = 0;
+
+    // Get the IPs that can launch a prefetch
+    num_on_time = history_table_get(cpu, latency, tag, line_addr, ip, addr, cycle);
+
+    //vberti_increase_conf_ip(tag, cpu);
+    
+    for (uint32_t i = 0; i < num_on_time; i++)
+    {
+        // Increase conf ip
+        if (i == 0) vberti_increase_conf_ip(tag, cpu);
+        
+        // Max number of strides that we can find
+        if (i >= MAX_HISTORY_IP) break;
+
+        // Add information into berti table
+        int64_t stride;
+        line_addr &= ADDR_MASK;
+
+        // Usually applications go from lower to higher memory position.
+        // The operation order is important (mainly because we allow
+        // negative strides)
+        stride = (int64_t) (line_addr - addr[i]);
+
+        if ((std::abs(stride) < (1 << STRIDE_MASK)))
+        {
+            // Only useful strides
+            vberti_table_add(ip[i], cpu, stride);
+        }
+    }
+}
+
+struct PageAccInfo{
+    uint64_t offset;
+    uint64_t latency;
+    
+};
+class PageAccululateTableData {
+  public:
+    // vector<bool> offsets;
+    // vector<uint64_t> latencys;
+    // vector<uint64_t> counter;
+
+    deque<int> offsets;
+    deque<uint64_t> latencys;
+    uint64_t first_offset;
+    // vector<struct PageAccInfo> page_history;
+};
+
+class PageAccululateTable : public LRUFullyAssociativeCache<PageAccululateTableData> {
+    typedef LRUFullyAssociativeCache<PageAccululateTableData> Super;
+    public:
+        PageAccululateTable(int size, int pattern_len, int offset_number) : Super(size) , pattern_len(pattern_len),offset_number(offset_number){
+            cerr<<"PatternAccululateTable sets: "<< num_sets<<" ways: "<<num_ways<<endl;
+        }
+
+        void find_global_first_offset(uint64_t block_number){
+            uint64_t region_num =  block_number / this->pattern_len;
+            int region_offset   =  block_number % this->pattern_len;
+            Entry *entry = Super::find(region_num);
+            if(!entry){
+                global_first_offset = region_offset;
+            }
+            else{
+                global_first_offset = entry->data.first_offset;
+            }
+        }
+        int insert(uint64_t block_number, uint64_t lat ){
+            uint64_t region_num =  block_number / this->pattern_len;
+            int region_offset   =  block_number % this->pattern_len;
+            
+            Entry *entry = Super::find(region_num);
+            if (!entry){
+                // vector<bool> offsets(this->pattern_len, false);
+                // vector<uint64_t> latencys(this->pattern_len, 0);
+                // vector<uint64_t> counter(this->pattern_len, 0);
+                deque<int> offsets;
+                deque<uint64_t> latencys;
+                offsets.push_back(region_offset);
+                latencys.push_back(lat);
+                // offsets[region_offset] = true;
+                // latencys[region_offset]=lat;
+                // counter[region_offset]=1;
+                Entry victim =  Super::insert(region_num, {offsets,latencys,region_offset});
+                this->set_mru(region_num);
+                if(this->debug_level>=2){
+                    cerr  << "[PAT] Insert new page: "<<  region_num << ", latency: " << lat << " offsets: "<< dequeToString(offsets) <<endl;
+                }
+                return 0;
+            }else{
+                
+                this->set_mru(region_num);
+                // entry->data.offsets[region_offset] = true;
+                // entry->data.latencys[region_offset] = lat;
+                // entry->data.counter[region_offset] = entry->data.counter[region_offset] + 1;
+
+                for (size_t i = 0; i < entry->data.offsets.size(); ++i) {
+                    if(entry->data.offsets[i] == region_offset){
+                        return 0;
+                    }
+                } 
+
+                if(entry->data.offsets.size()>= this->offset_number){
+                    entry->data.offsets.pop_front();
+                    entry->data.latencys.pop_front();
+                }
+                entry->data.offsets.push_back(region_offset);
+                entry->data.latencys.push_back(lat);
+
+                if(this->debug_level>=2){
+                    cerr  << "[PAT] Accumulate new page number: "<<  region_num << ", latency: " << lat << " offsets: "<< dequeToString(entry->data.offsets) <<endl;
+                }
+                return 0;
+            }
+        }
+
+        int get_stride(uint64_t block_number, uint64_t lat, uint64_t cycle, int stride[256] ){
+            uint64_t region_num =  block_number / this->pattern_len;
+            int region_offset   =  block_number % this->pattern_len;
+            Entry *entry = Super::find(region_num);
+            if (!entry){
+                if(this->debug_level>=2){
+                    cerr  << "[PAT] No stride. page number: "<<  region_num << ", latency: " << lat << " cycle: "<< cycle <<endl;
+                }
+                return 0;
+            }else{
+                if (cycle < lat) return 0;
+                cycle = cycle - lat;
+                int cnt = 0;
+                this->set_mru(region_num);
+
+                // cerr<< entry->data.offsets.size()<<endl;
+                // for (int i = (int)entry->data.offsets.size()-1; i>=0; i--) {
+                //     if( entry->data.latencys[i] < cycle ){
+                //         stride[cnt] = region_offset - entry->data.offsets[i];
+                //         cnt = cnt + 1;
+                //         if(this->debug_level>=2){
+                //             cerr  << "[PAT] stride: " << stride[i]<<" offset " << region_offset<<" "<<entry->data.offsets[i] << " page number: "<<  region_num << ", latency: " << lat << " cycle: "<< cycle <<endl;
+                //         }   
+                //     }      
+                // }
+
+                for (size_t i = 0; i < entry->data.offsets.size(); ++i) {
+                    if( entry->data.latencys[i] < cycle ){
+                        stride[cnt] = region_offset - entry->data.offsets[i];
+                        cnt = cnt + 1;
+                        if(this->debug_level>=2){
+                            cerr  << "[PAT] stride: " << stride[i]<<" offset " << region_offset<<" "<<entry->data.offsets[i] << " page number: "<<  region_num << ", latency: " << lat << " cycle: "<< cycle <<endl;
+                        }   
+                    }      
+                }
+
+                // for(int i=0; i< this->pattern_len; i++){
+                //     if(entry->data.offsets[i] && entry->data.latencys[i] < cycle){
+                //         stride[cnt] = region_offset - i;
+                //         cnt = cnt + 1;
+                //         if(this->debug_level>=2){
+                //             cerr  << "[PAT] stride: " << stride[i] << " page number: "<<  region_num << ", latency: " << lat << " cycle: "<< cycle <<endl;
+                //         }   
+                //     }
+                // }
+                return cnt;
+            }
+        }
+    
+    private:
+        uint64_t pattern_len;
+        uint64_t offset_number;
+};
+
+
+
+class PageStrideTableData {
+  public:
+    // vector<uint64_t> strides;
+    // vector<uint64_t> conf;
+    vector<stride_info> stride_conf;
+    // vector<uint64_t> train_stride;
+    uint64_t total;
+    uint64_t access;
+};
+
+bool compareByConf(const stride_info& s1, const stride_info& s2) {
+
+    if(s1.prefetch_level != s2.prefetch_level){
+        return s1.prefetch_level < s2.prefetch_level ;
+    }else{
+        return s1.conf > s2.conf;
+    }
+    
+    
+    //  if(s1.conf != s2.conf){
+    //     return s1.conf > s2.conf;
+    // }else{
+    //     return s1.lru>s2.lru;
+    // }
+}
+
+bool compareByOnlyConf(const stride_info& s1, const stride_info& s2) {
+    return s1.conf > s2.conf;
+}
+
+class PageStrideTable : public LRUFullyAssociativeCache<PageStrideTableData> {
+    typedef LRUFullyAssociativeCache<PageStrideTableData> Super;
+    public:
+        PageStrideTable(int size, uint64_t pattern_len, uint64_t stride_num, float l1_thres, float l2_thres, float llc_thres, 
+           int page_confident_max, int page_first) : Super(size) ,
+         pattern_len(pattern_len),stride_num(stride_num),
+         l1_thres(l1_thres), l2_thres(l2_thres), llc_thres(llc_thres),
+         page_confident_max(page_confident_max), page_first(page_first)
+        //  , page_l1_thres(page_l1_thres),  page_l2_thres(page_l2_thres), page_l3_thres(page_l3_thres)
+        {
+            cerr<<"PatternAccululateTable sets: "<< num_sets<<" ways: "<<num_ways<<endl;
+        }
+
+        int add_stride_conf(uint64_t block_number, int s){
+            uint64_t region_num =  block_number / this->pattern_len;
+            int region_offset   =  block_number % this->pattern_len;
+            Entry *entry = Super::find(region_num);
+
+            if (!entry){
+                vector<stride_info> add_stride;
+                add_stride.push_back({s, 1, NO_PREFETCH, 1});
+                Entry victim =  Super::insert(region_num, {add_stride, 1,1});
+                this->set_mru(region_num);
+                if(this->debug_level>=2){
+                    cerr  << "[PST] insert page : "  << " page number: "<< region_num  << ", insert stride: " << s  <<endl;
+                }   
+                return 0;
+            }else{
+                this->set_mru(region_num);
+                for ( auto& pair : entry->data.stride_conf) {
+                    if(pair.stride == s){
+                        pair.conf = pair.conf+1;
+                        pair.lru = entry->data.total;
+                        if(pair.conf > entry->data.total){
+                            if(this->debug_level>=2){
+                                cerr  << "[PST] insert page : "  << " page number: "<< region_num  << ", total: " << entry->data.total <<" conf: "<<pair.conf <<endl;
+                                assert(0);
+                            }                            
+                        }
+
+                        // assert(pair.conf <= entry->data.total);
+                        if(this->debug_level>=2){
+                            cerr  << "[PST] insert page : "  << " page number: "<< region_num  << ", accumulate stride: " << s  <<endl;
+                        }
+                        return 0;
+                    }
+                }
+                std::sort(entry->data.stride_conf.begin(), entry->data.stride_conf.end(), compareByConf);
+                if(entry->data.stride_conf.size() >= this->stride_num){
+                    entry->data.stride_conf.pop_back();
+                }
+                entry->data.stride_conf.push_back({s,1, NO_PREFETCH, entry->data.total});
+            }
+        }
+
+        void add_page_conf(uint64_t block_number){
+            uint64_t region_num =  block_number / this->pattern_len;
+            int region_offset   =  block_number % this->pattern_len;
+            Entry *entry = Super::find(region_num);
+            if (entry){
+                if(this->debug_level>=2){
+                    cerr  << "[PST] add page count: "  << " page number: "<< region_num  << ", total: " << entry->data.total <<endl;
+                }
+                entry->data.total = entry->data.total + 1;
+                entry->data.access = entry->data.access + 1;
+                if(entry->data.total == page_confident_max){
+                    for ( auto& pair : entry->data.stride_conf) {
+                        float conf_rate = 1.0*pair.conf/entry->data.total ;
+                        if( conf_rate > l1_thres ){
+                            pair.prefetch_level = L1;
+                        }else if(conf_rate > l2_thres){
+                            pair.prefetch_level = L2;
+                        }else if(conf_rate > llc_thres){
+                            pair.prefetch_level = L2R;
+                        }
+                        else{
+                            pair.prefetch_level = NO_PREFETCH;
+                        }
+                        if(this->debug_level>=2){
+                            cerr  << "[PST] add_page_conf: "  << " page number: "<< region_num  << ", stride: " << pair.stride <<", conf: "<< pair.conf<<" level: "<<pair.prefetch_level <<endl;
+                        }
+                        pair.conf = 0;
+                        pair.lru = 0;
+                    }
+                    entry->data.total = 1;
+                }
+            }
+        }
+
+        vector<stride_info> get_conf_stride(uint64_t block_number){
+            uint64_t region_num =  block_number / this->pattern_len;
+            int region_offset   =  block_number % this->pattern_len;
+            vector<stride_info> conf_stride;
+            Entry *entry = Super::find(region_num);
+            stat.page_access += 1;
+            if (!entry){
+                // return 0;
+                 if(this->debug_level>=2){
+                    cerr  << "[PST] get conf stride: "  << " No this page"<<endl;
+                }
+
+
+                // cerr  << "[PST] get conf stride: "  << " No this page"<<endl;
+                return conf_stride;
+            }else{
+                stat.page_get += 1;
+                //统计是否是短序列
+                if(entry->data.access >= 8){
+                    stat.page_long += 1;
+                    stat.page_long_true = true;
+                }
+                int conf_dx = 0;
+
+                std::sort(entry->data.stride_conf.begin(), entry->data.stride_conf.end(), compareByConf);
+                // cerr  << "[PST] get conf stride: "  << " page number: "<< region_num <<", size: " << entry->data.stride_conf.size() <<" total: "<< entry->data.total <<endl;
+                for ( auto& pair : entry->data.stride_conf) {
+                    if(pair.stride!=0 && pair.prefetch_level < NO_PREFETCH){
+                        conf_stride.push_back({pair.stride, pair.conf, pair.prefetch_level});
+                        if(pair.prefetch_level == L1){
+                            conf_dx++ ;
+                        }
+                    }
+                }
+
+                //统计没有conf delta的个数
+                if( conf_stride.size() ==0 && entry->data.total >= page_first){
+                    std::sort(entry->data.stride_conf.begin(), entry->data.stride_conf.end(), compareByOnlyConf);
+                    for ( auto& pair : entry->data.stride_conf) {
+                        float conf_rate = 1.0*pair.conf/entry->data.total ;
+                        if( conf_rate > l1_thres+0.15){
+                            conf_stride.push_back({pair.stride, pair.conf, L1});
+                            conf_dx ++;
+                        }else if(conf_rate > l2_thres+0.15){
+                            conf_stride.push_back({pair.stride, pair.conf, L2});
+                        }else{
+                            break;
+                        }
+                    }
+                    
+                }
+                if(conf_dx != 0){
+                    stat.page_conf += 1;
+                    stat.page_conf_true = true;
+                }
+                return conf_stride;
+            }
+        }
+    private:
+        uint64_t pattern_len;
+        uint64_t stride_num;
+        float l1_thres, l2_thres, llc_thres;
+        uint64_t page_confident_max, page_first; 
+        // float   page_l1_thres, page_l2_thres, page_l3_thres;
+};
+
+
+class StrideCountTableData {
+  public:
+    uint64_t cnt;
+};
+
+class StrideCountTable : public LRUFullyAssociativeCache<StrideCountTableData> {
+    typedef LRUFullyAssociativeCache<StrideCountTableData> Super;
+  public:
+    StrideCountTable(int size, float threshold, uint64_t interval) : Super(size), global_threshold(threshold), interval(interval) {
+        total_cnt = 0;
+        select_stride = 0;
+        rate = 0;
+        cur_max = 0;
+        cerr<<"StrideCountTable sets: "<< num_sets<<" ways: "<<num_ways<<endl;
+        // assert(__builtin_popcount(size) == 1);
+        // assert(__builtin_popcount(pattern_len) == 1);
+    }
+    uint32_t get_cnt(){
+        return this->select_stride;
+    }
+
+    float get_threshold(){
+        return rate;
+    }
+
+    uint64_t add_cnt(uint64_t pattern_number) {
+        this->total_cnt++;
+        if(this->total_cnt > this->interval && this->interval != 0 ){
+            reset();
+        }
+        Entry *entry = Super::find(pattern_number);
+        if (!entry){
+            // assert(0);
+            Entry victim =  Super::insert(pattern_number, {1});
+            this->set_mru(pattern_number);
+            // traverse_entry();
+            if (this->debug_level >= 2) {
+                cerr << std::hex << "[Bingo] StrideCountTable insert stride: "   << " stride: " << pattern_number << endl;
+                if(victim.valid){
+                    cerr << std::hex << "[Bingo] StrideCountTable replace stride: "   << " stride: " << victim.key <<", cnt: "<< victim.data.cnt  << endl;
+                }
+                
+            }
+            return 1;
+        }
+        entry->data.cnt = entry->data.cnt + 1 ;
+        // if(entry->data.cnt > cur_max){
+        //     cur_max = entry->data.cnt;
+        //     this->select_stride = pattern_number;
+            
+        // }
+
+        // this->rate = 1.0 * cur_max /( this->total_cnt+1);
+        this->rate = 1.0 * entry->data.cnt / this->total_cnt;
+        if( rate > this->global_threshold){
+            this->select_stride = pattern_number;
+        }
+        this->set_mru(pattern_number);
+        // traverse_entry();
+        if (this->debug_level >= 2) {
+            cerr << std::hex << "[Bingo] StrideCountTable add cnt: "   << " stride: " << entry->key <<", cnt: "<< entry->data.cnt << endl;
+        }
+        return entry->data.cnt;
+    }
+
+    void traverse_entry(){
+        auto &set = this->entries[0];
+        for (int i = 0; i < num_ways; i += 1){
+            if (set[i].valid){
+                cerr<<"Traverse way: "<< i<< ", tag : "<< set[i].key <<" cnt: " << set[i].data.cnt <<" lru: " << (*get_lru(0,i))<<endl;
+            }
+        }    
+    }
+
+    void set_debug_level(int debug_level) { this->debug_level = debug_level; }
+
+    bool reset() {
+        auto &set = this->entries[0];
+        auto &cam = cams[0];
+        // assert(set.size() == size);
+        assert(this->num_sets == 1);
+        assert(this->num_ways == size);
+        for (int i = 0; i < num_ways; i += 1){
+            if (set[i].valid){
+                set[i].valid =false;
+            }
+        }
+
+        // for (int i = 0; i < num_sets; i += 1){
+        //     if (set[i].valid){
+        //         set[i].valid =false;
+        //     }
+        // }
+
+        cam.clear();
+        // for (int i = 0; i < num_sets; i += 1)
+        //     for (int j = 0; j < num_ways; j += 1)
+        //         entries[i][j].valid = false;
+
+    //    traverse_entry();
+        // set.clear();
+        this->total_cnt = 1;
+        this->select_stride = 0;
+        this->rate = 0;
+        this->cur_max = 0;
+        return true;
+    }
+
+    private:
+        uint64_t total_cnt;
+        float global_threshold;
+        uint64_t interval;
+        uint64_t select_stride;
+        uint64_t cur_max;
+        float rate;
+
+
+};
+
+
+class OffsetAccululateTableData {
+  public:
+    // vector<bool> offsets;
+    // vector<uint64_t> latencys;
+    // vector<uint64_t> counter;
+
+    deque<int> offsets;
+    deque<uint64_t> latencys;
+};
+
+class OffsetAccululateTable : public LRUFullyAssociativeCache<OffsetAccululateTableData> {
+    typedef LRUFullyAssociativeCache<OffsetAccululateTableData> Super;
+    public:
+        OffsetAccululateTable(int size, int pattern_len, int offsets_number) : Super(size) , pattern_len(pattern_len), offsets_number(offsets_number){
+            cerr<<"PatternAccululateTable sets: "<< num_sets<<" ways: "<<num_ways<<endl;
+        }
+
+        int insert(uint64_t baddr, uint64_t lat ){
+            Entry *entry = Super::find(global_first_offset);
+            uint64_t region_offset = baddr % this->pattern_len;
+            if (!entry){
+                deque<int> offsets;
+                deque<uint64_t> latencys;
+                offsets.push_back(baddr%(this->pattern_len));
+                latencys.push_back(lat);
+                Entry victim =  Super::insert(global_first_offset, {offsets,latencys});
+                this->set_mru(global_first_offset);
+                if(this->debug_level>=2){
+                    cerr  << "[PAT] Insert new page: "<<  global_first_offset << ", latency: " << lat << " offsets: "<< dequeToString(offsets) <<endl;
+                }
+                return 0;
+            }else{
+                this->set_mru(global_first_offset);
+                for (size_t i = 0; i < entry->data.offsets.size(); ++i) {
+                    if(entry->data.offsets[i] == region_offset){
+                        return 0;
+                    }
+                } 
+
+                if(entry->data.offsets.size()>= this->offsets_number){
+                    entry->data.offsets.pop_front();
+                    entry->data.latencys.pop_front();
+                }
+                entry->data.offsets.push_back(region_offset);
+                entry->data.latencys.push_back(lat);
+
+                if(this->debug_level>=2){
+                    cerr  << "[PAT] Accumulate new page number: "<<  global_first_offset << ", latency: " << lat << " offsets: "<< dequeToString(entry->data.offsets) <<endl;
+                }
+                return 0;
+            }
+        }
+
+        int get_stride(uint64_t baddr, uint64_t lat, uint64_t cycle, int stride[256] ){
+            Entry *entry = Super::find(global_first_offset);
+            uint64_t region_offset = baddr % this-> pattern_len;
+            if (!entry){
+                if(this->debug_level>=2){
+                    cerr  << "[PAT] No stride. page number: "<<  global_first_offset << ", latency: " << lat << " cycle: "<< cycle <<endl;
+                }
+                return 0;
+            }else{
+                if (cycle < lat) return 0;
+                cycle = cycle - lat;
+                int cnt = 0;
+                this->set_mru(global_first_offset);
+
+
+                for (size_t i = 0; i < entry->data.offsets.size(); ++i) {
+                    if( entry->data.latencys[i] < cycle ){
+                        stride[cnt] = region_offset - entry->data.offsets[i];
+                        cnt = cnt + 1;
+                        if(this->debug_level>=2){
+                            cerr  << "[PAT] stride: " << stride[i]<<" offset " << region_offset<<" "<<entry->data.offsets[i] << " page number: "<<  global_first_offset << ", latency: " << lat << " cycle: "<< cycle <<endl;
+                        }   
+                    }      
+                }
+                return cnt;
+            }
+        }
+    
+    private:
+        uint64_t pattern_len;
+        uint64_t offsets_number;
+};
+
+class OffsetStrideTableData {
+  public:
+    // vector<uint64_t> strides;
+    // vector<uint64_t> conf;
+    vector<stride_info> stride_conf;
+    // vector<uint64_t> train_stride;
+    uint64_t total;
+    uint64_t access;
+};
+
+
+class OffsetStrideTable : public LRUFullyAssociativeCache<OffsetStrideTableData> {
+    typedef LRUFullyAssociativeCache<OffsetStrideTableData> Super;
+    public:
+        OffsetStrideTable(int size, uint64_t pattern_len, uint64_t stride_num, float l1_thres, float l2_thres, float llc_thres, 
+           int offset_confident_max, int offset_first) : Super(size) ,
+         pattern_len(pattern_len),stride_num(stride_num),
+         l1_thres(l1_thres), l2_thres(l2_thres), llc_thres(llc_thres),
+         offset_confident_max(offset_confident_max), offset_first(offset_first)
+        //  , offset_l1_thres(offset_l1_thres),  offset_l2_thres(offset_l2_thres), offset_l3_thres(offset_l3_thres)
+        {
+            cerr<<"PatternAccululateTable sets: "<< num_sets<<" ways: "<<num_ways<<endl;
+        }
+
+        int add_stride_conf(uint64_t block_number, int s){
+            Entry *entry = Super::find(global_first_offset);
+
+            if (!entry){
+                vector<stride_info> add_stride;
+                add_stride.push_back({s, 1, NO_PREFETCH, 1});
+                Entry victim =  Super::insert(global_first_offset, {add_stride, 1,1});
+                this->set_mru(global_first_offset);
+                if(this->debug_level>=2){
+                    cerr  << "[PST] insert offset : "  << " offset number: "<< stride_num  << ", insert stride: " << s  <<endl;
+                }   
+                return 0;
+            }else{
+                this->set_mru(global_first_offset);
+                for ( auto& pair : entry->data.stride_conf) {
+                    if(pair.stride == s){
+                        pair.conf = pair.conf+1;
+                        pair.lru = entry->data.total;
+                        if(pair.conf > entry->data.total){
+                            if(this->debug_level>=2){
+                                cerr  << "[PST] insert offset : "  << " offset number: "<< stride_num  << ", total: " << entry->data.total <<" conf: "<<pair.conf <<endl;
+                                assert(0);
+                            }                            
+                        }
+
+                        // assert(pair.conf <= entry->data.total);
+                        if(this->debug_level>=2){
+                            cerr  << "[PST] insert offset : "  << " offset number: "<< stride_num  << ", accumulate stride: " << s  <<endl;
+                        }
+                        return 0;
+                    }
+                }
+                std::sort(entry->data.stride_conf.begin(), entry->data.stride_conf.end(), compareByConf);
+                if(entry->data.stride_conf.size() >= this->stride_num){
+                    entry->data.stride_conf.pop_back();
+                }
+                entry->data.stride_conf.push_back({s,1, NO_PREFETCH, entry->data.total});
+            }
+        }
+
+        void add_offset_conf(uint64_t block_number){
+            Entry *entry = Super::find(global_first_offset);
+            if (entry){
+                if(this->debug_level>=2){
+                    cerr  << "[PST] add offset count: "  << " offset number: "<< stride_num  << ", total: " << entry->data.total <<endl;
+                }
+                entry->data.total = entry->data.total + 1;
+                entry->data.access = entry->data.access + 1;
+                if(entry->data.total == offset_confident_max){
+                    for ( auto& pair : entry->data.stride_conf) {
+                        float conf_rate = 1.0*pair.conf/entry->data.total ;
+                        if( conf_rate > l1_thres ){
+                            pair.prefetch_level = L1;
+                        }else if(conf_rate > l2_thres ){
+                            pair.prefetch_level = L2;
+                        }else if(conf_rate > llc_thres){
+                            pair.prefetch_level = L2R;
+                        }
+                        else{
+                            pair.prefetch_level = NO_PREFETCH;
+                        }
+                        if(this->debug_level>=2){
+                            cerr  << "[PST] add_offset_conf: "  << " offset number: "<< stride_num  << ", stride: " << pair.stride <<", conf: "<< pair.conf<<" level: "<<pair.prefetch_level <<endl;
+                        }
+                        pair.conf = 0;
+                        pair.lru = 0;
+                    }
+                    entry->data.total = 1;
+                }
+            }
+        }
+
+        vector<stride_info> get_conf_stride(uint64_t block_number){
+            vector<stride_info> conf_stride;
+            Entry *entry = Super::find(global_first_offset);
+            stat.offset_access += 1;
+            if (!entry){
+                // return 0;
+                 if(this->debug_level>=2){
+                    cerr  << "[PST] get conf stride: "  << " No this offset"<<endl;
+                }
+
+
+                // cerr  << "[PST] get conf stride: "  << " No this offset"<<endl;
+                return conf_stride;
+            }else{
+                stat.offset_get += 1;
+                //统计是否是短序列
+                if(entry->data.access >= 8){
+                    stat.offset_long += 1;
+                    stat.offset_long_true = true;
+                }
+                int conf_dx = 0;
+
+                std::sort(entry->data.stride_conf.begin(), entry->data.stride_conf.end(), compareByConf);
+                // cerr  << "[PST] get conf stride: "  << " offset number: "<< stride_num <<", size: " << entry->data.stride_conf.size() <<" total: "<< entry->data.total <<endl;
+                for ( auto& pair : entry->data.stride_conf) {
+                    if(pair.stride!=0 && pair.prefetch_level < NO_PREFETCH){
+                        conf_stride.push_back({pair.stride, pair.conf, pair.prefetch_level});
+                        if(pair.prefetch_level == L1){
+                            conf_dx++ ;
+                        }
+                    }
+                }
+
+                if( conf_stride.size() ==0 && entry->data.total >= offset_first){
+                    std::sort(entry->data.stride_conf.begin(), entry->data.stride_conf.end(), compareByOnlyConf);
+                    for ( auto& pair : entry->data.stride_conf) {
+                        float conf_rate = 1.0*pair.conf/entry->data.total ;
+                        if( conf_rate > l1_thres + 0.15){
+                            conf_stride.push_back({pair.stride, pair.conf, L1});
+                            conf_dx++;
+                        }else if(conf_rate > l2_thres + 0.15){//l2_thres+0.15
+                            conf_stride.push_back({pair.stride, pair.conf, L2});
+                        }else{
+                            break;
+                        }
+                    }
+                    
+                }
+                if(conf_dx > 0){
+                    stat.offset_conf += 1;
+                    stat.offset_conf_true = true;
+                }
+                return conf_stride;
+            }
+        }
+    private:
+        uint64_t pattern_len;
+        uint64_t stride_num;
+        float l1_thres, l2_thres, llc_thres;
+        uint64_t offset_confident_max, offset_first; 
+        // float   offset_l1_thres, offset_l2_thres, offset_l3_thres;
+};
+
+class GlobalAccululateTableData {
+  public:
+    // vector<bool> baddrs;
+    // vector<uint64_t> latencys;
+    // vector<uint64_t> counter;
+
+    deque<int> baddrs;
+    deque<uint64_t> latencys;
+};
+
+class GlobalAccululateTable : public LRUFullyAssociativeCache<GlobalAccululateTableData> {
+    typedef LRUFullyAssociativeCache<GlobalAccululateTableData> Super;
+    public:
+        GlobalAccululateTable(int size, int pattern_len, int baddrs_number) : Super(size) , pattern_len(pattern_len), baddrs_number(baddrs_number){
+            cerr<<"PatternAccululateTable sets: "<< num_sets<<" ways: "<<num_ways<<endl;
+        }
+
+        int insert(uint64_t baddr, uint64_t lat ){
+            baddr = baddr & ADDR_MASK;
+            Entry *entry = Super::find(1);
+            uint64_t region_offset = baddr % this->pattern_len;
+            if (!entry){
+                deque<int> baddrs;
+                deque<uint64_t> latencys;
+                baddrs.push_back(baddr);
+                latencys.push_back(lat);
+                Entry victim =  Super::insert(1, {baddrs,latencys});
+                this->set_mru(1);
+                if(this->debug_level>=2){
+                    cerr  << "[PAT] Insert new page: "<<  1 << ", latency: " << lat << " baddrs: "<< dequeToString(baddrs) <<endl;
+                }
+                return 0;
+            }else{
+                this->set_mru(1);
+                for (size_t i = 0; i < entry->data.baddrs.size(); ++i) {
+                    if(entry->data.baddrs[i] == baddr){
+                        return 0;
+                    }
+                } 
+
+                if(entry->data.baddrs.size()>= this->baddrs_number){
+                    entry->data.baddrs.pop_front();
+                    entry->data.latencys.pop_front();
+                }
+                entry->data.baddrs.push_back(baddr);
+                entry->data.latencys.push_back(lat);
+
+                if(this->debug_level>=2){
+                    cerr  << "[PAT] Accumulate new page number: "<<  1 << ", latency: " << lat << " baddrs: "<< dequeToString(entry->data.baddrs) <<endl;
+                }
+                return 0;
+            }
+        }
+
+        int get_stride(uint64_t baddr, uint64_t lat, uint64_t cycle, int stride[256] ){
+            baddr = baddr & ADDR_MASK;
+            Entry *entry = Super::find(1);
+            uint64_t region_offset = baddr % this-> pattern_len;
+            if (!entry){
+                if(this->debug_level>=2){
+                    cerr  << "[PAT] No stride. page number: "<<  1 << ", latency: " << lat << " cycle: "<< cycle <<endl;
+                }
+                return 0;
+            }else{
+                if (cycle < lat) return 0;
+                cycle = cycle - lat;
+                int cnt = 0;
+                this->set_mru(1);
+
+
+                for (size_t i = 0; i < entry->data.baddrs.size(); ++i) {
+                    if( entry->data.latencys[i] < cycle ){
+                        if(std::abs((int64_t)baddr- entry->data.baddrs[i]) < (1 << STRIDE_MASK))
+                        {
+                            stride[cnt] = (int64_t)baddr- entry->data.baddrs[i];
+                            cnt = cnt + 1;
+                        }                      
+                          if(this->debug_level>=2){
+                            cerr  << "[PAT] stride: " << stride[i]<<" offset " << region_offset<<" "<<entry->data.baddrs[i] << " page number: "<<  global_first_offset << ", latency: " << lat << " cycle: "<< cycle <<endl;
+                        }   
+                    }      
+                }
+                return cnt;
+            }
+        }
+    
+    private:
+        uint64_t pattern_len;
+        uint64_t baddrs_number;
+};
+
+class GlobalStrideTableData {
+  public:
+    // vector<uint64_t> strides;
+    // vector<uint64_t> conf;
+    vector<stride_info> stride_conf;
+    // vector<uint64_t> train_stride;
+    uint64_t total;
+    uint64_t access;
+};
+
+
+class GlobalStrideTable : public LRUFullyAssociativeCache<GlobalStrideTableData> {
+    typedef LRUFullyAssociativeCache<GlobalStrideTableData> Super;
+    public:
+        GlobalStrideTable(int size, uint64_t pattern_len, uint64_t stride_num, float l1_thres, float l2_thres, float llc_thres, 
+           int offset_confident_max, int offset_first) : Super(size) ,
+         pattern_len(pattern_len),stride_num(stride_num),
+         l1_thres(l1_thres), l2_thres(l2_thres), llc_thres(llc_thres),
+         offset_confident_max(offset_confident_max), offset_first(offset_first)
+        //  , offset_l1_thres(offset_l1_thres),  offset_l2_thres(offset_l2_thres), offset_l3_thres(offset_l3_thres)
+        {
+            cerr<<"PatternAccululateTable sets: "<< num_sets<<" ways: "<<num_ways<<endl;
+        }
+
+        int add_stride_conf(uint64_t block_number, int s){
+            Entry *entry = Super::find(1);
+
+            if (!entry){
+                vector<stride_info> add_stride;
+                add_stride.push_back({s, 1, NO_PREFETCH, 1});
+                Entry victim =  Super::insert(1, {add_stride, 1,1});
+                this->set_mru(1);
+                if(this->debug_level>=2){
+                    cerr  << "[PST] insert offset : "  << " offset number: "<< stride_num  << ", insert stride: " << s  <<endl;
+                }   
+                return 0;
+            }else{
+                this->set_mru(1);
+                for ( auto& pair : entry->data.stride_conf) {
+                    if(pair.stride == s){
+                        pair.conf = pair.conf+1;
+                        pair.lru = entry->data.total;
+                        if(pair.conf > entry->data.total){
+                            if(this->debug_level>=2){
+                                cerr  << "[PST] insert offset : "  << " offset number: "<< stride_num  << ", total: " << entry->data.total <<" conf: "<<pair.conf <<endl;
+                                assert(0);
+                            }                            
+                        }
+
+                        // assert(pair.conf <= entry->data.total);
+                        if(this->debug_level>=2){
+                            cerr  << "[PST] insert offset : "  << " offset number: "<< stride_num  << ", accumulate stride: " << s  <<endl;
+                        }
+                        return 0;
+                    }
+                }
+                std::sort(entry->data.stride_conf.begin(), entry->data.stride_conf.end(), compareByConf);
+                if(entry->data.stride_conf.size() >= this->stride_num){
+                    entry->data.stride_conf.pop_back();
+                }
+                entry->data.stride_conf.push_back({s,1, NO_PREFETCH, entry->data.total});
+            }
+        }
+
+        void add_offset_conf(uint64_t block_number){
+            Entry *entry = Super::find(1);
+            if (entry){
+                if(this->debug_level>=2){
+                    cerr  << "[PST] add offset count: "  << " offset number: "<< stride_num  << ", total: " << entry->data.total <<endl;
+                }
+                entry->data.total = entry->data.total + 1;
+                entry->data.access = entry->data.access + 1;
+                if(entry->data.total == offset_confident_max){
+                    for ( auto& pair : entry->data.stride_conf) {
+                        float conf_rate = 1.0*pair.conf/entry->data.total ;
+                        if( conf_rate > l1_thres ){
+                            pair.prefetch_level = L1;
+                        }else if(conf_rate > l2_thres){
+                            pair.prefetch_level = L2;
+                        }else if(conf_rate > llc_thres){
+                            pair.prefetch_level = L2R;
+                        }
+                        else{
+                            pair.prefetch_level = NO_PREFETCH;
+                        }
+                        if(this->debug_level>=2){
+                            cerr  << "[PST] add_offset_conf: "  << " offset number: "<< stride_num  << ", stride: " << pair.stride <<", conf: "<< pair.conf<<" level: "<<pair.prefetch_level <<endl;
+                        }
+                        pair.conf = 0;
+                        pair.lru = 0;
+                    }
+                    entry->data.total = 1;
+                }
+            }
+        }
+
+        vector<stride_info> get_conf_stride(uint64_t block_number){
+            vector<stride_info> conf_stride;
+            Entry *entry = Super::find(1);
+            stat.global_access += 1;
+            if (!entry){
+                // return 0;
+                 if(this->debug_level>=2){
+                    cerr  << "[PST] get conf stride: "  << " No this offset"<<endl;
+                }
+
+
+                // cerr  << "[PST] get conf stride: "  << " No this offset"<<endl;
+                return conf_stride;
+            }else{
+                stat.global_get += 1;
+                //统计是否是短序列
+                if(entry->data.access >= 8){
+                    stat.global_long += 1;
+                    stat.global_long_true = true;
+                }
+                int conf_dx = 0;
+
+                std::sort(entry->data.stride_conf.begin(), entry->data.stride_conf.end(), compareByConf);
+                // cerr  << "[PST] get conf stride: "  << " offset number: "<< stride_num <<", size: " << entry->data.stride_conf.size() <<" total: "<< entry->data.total <<endl;
+                for ( auto& pair : entry->data.stride_conf) {
+                    if(pair.stride!=0 && pair.prefetch_level < NO_PREFETCH){
+                        conf_stride.push_back({pair.stride, pair.conf, pair.prefetch_level});
+                        if(pair.prefetch_level == L1){
+                            conf_dx++ ;
+                        }
+                    }
+                }
+
+                //统计没有conf delta的个数
+
+                if( conf_stride.size() ==0 && entry->data.total >= offset_first){
+                    std::sort(entry->data.stride_conf.begin(), entry->data.stride_conf.end(), compareByOnlyConf);
+                    for ( auto& pair : entry->data.stride_conf) {
+                        float conf_rate = 1.0*pair.conf/entry->data.total ;
+                        if( conf_rate > l1_thres + 0.15){
+                            conf_stride.push_back({pair.stride, pair.conf, L1});
+                            conf_dx++;
+                        }else if(conf_rate > l1_thres ){
+                            conf_stride.push_back({pair.stride, pair.conf, L2});
+                        }else{
+                            break;
+                        }
+                    }
+                    
+                }
+                if(conf_dx > 0){
+                    stat.global_conf += 1;
+                    stat.global_conf_true = true;
+                }
+                return conf_stride;
+            }
+        }
+    private:
+        uint64_t pattern_len;
+        uint64_t stride_num;
+        float l1_thres, l2_thres, llc_thres;
+        uint64_t offset_confident_max, offset_first; 
+        // float   offset_l1_thres, offset_l2_thres, offset_l3_thres;
+};
+class MIX {
+  public:
+
+    MIX(struct PAGE_SETTING setting)
+        : setting(setting), pattern_len(setting.REGION_SIZE>>LOG2_BLOCK_SIZE),
+        pat(setting.PAGE_ACCUMULATE_TABLE, setting.REGION_SIZE>>LOG2_BLOCK_SIZE, setting.OFFSET_RECORD_NUMBER),
+        pst(setting.PAGE_STRIDE_TABLE, setting.REGION_SIZE>>LOG2_BLOCK_SIZE, setting.PAGE_STRIDE_NUMBER, 
+        setting.PAGE_L1_THRESHOLD, setting.PAGE_L2_THRESHOLD, setting.PAGE_LLC_THRESHOLD, setting.PAGE_CONFIDENCE_MAX, setting.PAGE_LANZAR_INT),
+        pct(setting.STRIDE_COUNT_TABLE, setting.GLOBAL_STRIDE_THRESHOLD, setting.INTERVAL),
+        oat(setting.OFFSET_ACCUMULATE_TABLE, setting.REGION_SIZE>>LOG2_BLOCK_SIZE, setting.OFFSET_RECORD_NUMBER),
+        ost(setting.OFFSET_STRIDE_TABLE, setting.REGION_SIZE>>LOG2_BLOCK_SIZE, setting.OFFSET_STRIDE_NUMBER, 
+        setting.OFFSET_L1_THRESHOLD, setting.OFFSET_L2_THRESHOLD, setting.OFFSET_LLC_THRESHOLD, setting.PAGE_CONFIDENCE_MAX, setting.PAGE_LANZAR_INT),
+        gat(setting.GLOBAL_ACCUMULATE_TABLE, setting.REGION_SIZE>>LOG2_BLOCK_SIZE, setting.GLOBAL_RECORD_NUMBER),
+        gst(setting.GLOBAL_STRIDE_TABLE, setting.REGION_SIZE>>LOG2_BLOCK_SIZE, setting.GLOBAL_STRIDE_NUMBER, 
+        setting.GLOBAL_L1_THRESHOLD, setting.GLOBAL_L2_THRESHOLD, setting.GLOBAL_LLC_THRESHOLD, setting.PAGE_CONFIDENCE_MAX, setting.PAGE_LANZAR_INT)
+        {   
+        }
+    
+
+    // void insert_pat(uint64_t block_number, uint64_t latency){
+    //     pat.insert(block_number, latency);
+
+    // }
+
+    void insert_pct(uint64_t stride){
+        pct.add_cnt(stride);
+    }
+
+    uint64_t get_pct(){
+        return this->pct.get_cnt();
+    }
+
+    void update_stride(uint64_t block_number, uint64_t latency, uint64_t  cycle){
+        int strides[256];
+        // cerr<<"get stride "<<endl;
+        int cnt = pat.get_stride(block_number, latency, cycle, strides);
+        for (int i=0; i<cnt; i++){
+            // assert(cnt<6);
+            if(i==0){
+                pst.add_page_conf(block_number);
+            }
+            pst.add_stride_conf(block_number, strides[i]);
+        }
+        //清空stride，为offset添加stride
+        for (int i = 0; i < 256; i++){
+            strides[i] = 0;
+        }
+        cnt = oat.get_stride(block_number, latency, cycle, strides);
+        for(int i = 0; i < cnt; i++){
+            if(i == 0){
+                ost.add_offset_conf(block_number);
+            }
+            ost.add_stride_conf(block_number, strides[i]);
+        }
+
+        //清空stride，为global添加stride
+        for (int i = 0; i < 256; i++){
+            strides[i] = 0;
+        }
+        cnt = gat.get_stride(block_number, latency, cycle, strides);
+        for(int i = 0; i < cnt; i++){
+            if(i == 0){
+                gst.add_offset_conf(block_number);
+            }
+            gst.add_stride_conf(block_number, strides[i]);
+        }
+    }
+
+    void cache_fill(uint64_t cpu, uint64_t line_addr, uint64_t latency){
+
+
+        uint64_t block_number =  line_addr;
+        
+        // uint64_t block_number = ((line_addr >> 1) ^ (line_addr >> 4));
+        // block_number = block_number&PAGE_MASK ;
+        
+
+        if (this->debug_level >= 2) {
+            uint64_t region_number = block_number / this->pattern_len;
+            int region_offset = block_number % this->pattern_len;    
+            cerr << "[MIX] cache fill(block_number: "  << block_number << ", region_number:" << region_number <<" region_offset: " << region_offset << ", latency: " << latency << " )" << endl;
+        }
+        update_stride(block_number, latency, current_core_cycle[cpu] & TIME_MASK);
+        
+    }
+
+    _Strides access(uint32_t cpu, uint64_t line_addr, uint8_t cache_hit){
+
+        uint64_t block_number =  line_addr;
+
+        // uint64_t block_number = ((line_addr >> 1) ^ (line_addr >> 4));
+        // block_number = block_number&PAGE_MASK ;
+
+        uint64_t region_number = block_number / this->pattern_len;
+        int region_offset = block_number % this->pattern_len;
+        uint64_t cycle = current_core_cycle[cpu] & TIME_MASK;
+        if (this->debug_level >= 2) {
+            cerr << endl  << "[MIX] access(block_number: "  << block_number << ", region_number:" << region_number <<" region_offset: " << region_offset <<  " )" << endl;
+            cerr << "[MIX] access "<<" cache_hit: "   << (cache_hit==1) <<" pf: " << (shadow_cache_is_pf(cpu, block_number) == 1 )<<", cycle "<< cycle  << endl;
+            // cerr<<" rate: "<<rate<< endl;
+        }
+
+        
+        if (!cache_hit){
+            pat.insert(block_number, cycle);
+            oat.insert(block_number,cycle);
+            gat.insert(block_number, cycle);
+        }else if (cache_hit && shadow_cache_is_pf(cpu, line_addr)){
+            pat.insert(block_number, cycle);
+            oat.insert(block_number,cycle);
+            gat.insert(block_number, cycle);
+            uint64_t latency = shadow_cache_latency(cpu, line_addr);
+            update_stride(block_number, latency, cycle);         
+        }
+        pat.find_global_first_offset(block_number);
+        // vector<stride_info> conf_stride;
+        // conf_stride = this->pst.get_conf_stride(block_number);
+    struct _Strides page_offset_strides;
+    page_offset_strides.conf_page_stride= get_conf_stride_page(block_number);
+    page_offset_strides.conf_offset_stride = get_conf_stride_offset(block_number);
+    page_offset_strides.conf_global_stride = get_conf_stride_global(block_number);
+        return page_offset_strides;
+    }
+
+    vector<stride_info> get_conf_stride_page(uint64_t block_number){
+        vector<stride_info> conf_stride;
+        conf_stride = this->pst.get_conf_stride(block_number);
+        return conf_stride;
+    }
+
+    vector<stride_info> get_conf_stride_offset(uint64_t block_number){
+        vector<stride_info> conf_stride;
+        conf_stride = this->ost.get_conf_stride(block_number);
+        return conf_stride;
+    }
+
+    vector<stride_info> get_conf_stride_global(uint64_t block_number){
+        vector<stride_info> conf_stride;
+        conf_stride = this->gst.get_conf_stride(block_number);
+        return conf_stride;
+    }
+
+    float get_global_rate(){
+        return this->pct.get_threshold();
+    }
+
+    void train_prefetcher(uint64_t block_number){
+
+        // pat.insert(block_number, );
+
+    }
+
+    void set_debug_level(int debug_level) { 
+        this->debug_level = debug_level; 
+        pat.set_debug_level(debug_level);
+        pst.set_debug_level(debug_level);
+        pct.set_debug_level(debug_level);
+        oat.set_debug_level(debug_level);
+        ost.set_debug_level(debug_level);
+        gat.set_debug_level(debug_level);
+        gst.set_debug_level(debug_level);
+    }
+    
+    private:
+        struct PAGE_SETTING setting;
+        int pattern_len;
+        PageAccululateTable pat;
+        PageStrideTable pst;
+        StrideCountTable pct;
+        OffsetAccululateTable oat;
+        OffsetStrideTable ost;
+        GlobalAccululateTable gat;
+        GlobalStrideTable gst;
+        int debug_level = 0;
+
+};
+
+vector<MIX> prefetchers;
+
+
+struct PAGE_SETTING setting;
+
+void CACHE::l1d_prefetcher_initialize() 
+{
+    shadow_cache_init(cpu);
+    latency_table_init(cpu);
+    history_table_init(cpu);
+
+    
+    stat.reset();
+
+    prefetchers = vector<MIX>(NUM_CPUS, MIX(setting));
+
+    std::cout << "History Sets: " << HISTORY_TABLE_SET << std::endl;
+    std::cout << "History Ways: " << HISTORY_TABLE_WAY << std::endl;
+    std::cout << "BERTI Size: " << BERTI_TABLE_SIZE << std::endl;
+    std::cout << "BERTI Stride Size: " << BERTI_TABLE_STRIDE_SIZE << std::endl;
+    
+    for(int i =0; i<NUM_CPUS; i++){
+        prefetchers[i].set_debug_level(0);
+    }
+    spec_intructions_complete = false;
+    global_first_offset = 64;
+}
+
+void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit,
+        uint8_t type, uint8_t critical_ip_flag)
+{
+    assert(type == LOAD || type == RFO);
+
+    if(warmup_complete[cpu] && warmup_flag_l1 == 0){
+        stat.reset();
+        warmup_flag_l1 = 1;
+    }
+
+    uint64_t line_addr = (addr >> LOG2_BLOCK_SIZE); // Line addr
+    uint64_t pc = ip;
+    ip = ((ip >> 1) ^ (ip >> 4));
+    //ip = (ip >> 1) ^ (ip >> 4) ^ (ip >> 8);
+    ip = ip & IP_MASK;
+    if (!cache_hit)
+    {
+        // This is a miss
+
+        // Add @ to latency table
+        latency_table_add(line_addr, ip, cpu, 1);
+
+        // Add to history table
+        history_table_add(ip, cpu, line_addr);
+        
+        uint64_t cycle = current_core_cycle[cpu] & TIME_MASK;
+        // prefetchers[cpu].insert_pat(line_addr, cycle);
+        // if(spec_intructions_complete)
+        // {
+        //     std::cout <<  "pc:"<<pc<<" ";
+        //     std::cout << "offset:"<<(line_addr%(1<<LOG2_BLOCKS_PER_PAGE))<<" ";
+        //     std::cout << "baddr:"<< line_addr<<" ";
+        //     std::cout << "vpaddr:"<< (line_addr >> LOG2_BLOCKS_PER_PAGE)<<" ";
+        //     std::cout << "ip:" << ip << " ";
+        //     std::cout << "M" << std::endl;
+        // }
+
+    } else if (cache_hit && shadow_cache_is_pf(cpu, line_addr))
+    {
+        // Cache line access
+        shadow_cache_pf(cpu, line_addr);
+        
+        // Buscar strides Y actualizar
+        uint64_t latency = shadow_cache_latency(cpu, line_addr);
+        uint64_t cycle = current_core_cycle[cpu] & TIME_MASK;
+        find_and_update(cpu, latency, ip, current_core_cycle[cpu] & TIME_MASK, 
+                line_addr);
+
+        history_table_add(ip, cpu, line_addr); 
+
+
+        // prefetchers[cpu].update_stride(line_addr, latency, current_core_cycle[cpu] & TIME_MASK);
+        // prefetchers[cpu].insert_pat(line_addr, cycle);
+        // if(spec_intructions_complete)
+        // {
+        //     std::cout <<"pc:"<<pc<<" ";
+        //     std::cout << "offset:"<<(line_addr%(1<<LOG2_BLOCKS_PER_PAGE))<<" ";
+        //     std::cout << "baddr:"<< line_addr<<" ";
+        //     std::cout << "vpaddr:"<< (line_addr >> LOG2_BLOCKS_PER_PAGE)<<" ";
+        //     std::cout << "ip:" << ip << " ";
+        //     std::cout << "PH" << std::endl;
+        // }
+    } else
+    {
+        // Cache line access
+        shadow_cache_pf(cpu, line_addr);
+        // No pf in hit
+        //return;
+    }
+
+    // Get stride to prefetch
+    stride_t stride[MAX_PF];
+    for (int i = 0; i < MAX_PF; i++) 
+    {
+        stride[i].conf = 0;
+        stride[i].stride = 0;
+        stride[i].rpl = R;
+    }
+    struct _Strides page_offset_strides;
+    // cerr<<"here"<<endl;
+    // conf_stride = prefetchers[cpu].get_conf_stride(line_addr);
+    
+    page_offset_strides = prefetchers[cpu].access(cpu, line_addr, cache_hit);
+
+
+    if((1.0 * MSHR.occupancy / (float) MSHR_SIZE) == 1 ){
+        stat.mshr_occupancy++;
+    }
+    stat.access_times++;
+    int total_prefetch = 0;
+    int berti_launched = 0;
+    if (vberti_table_get(ip, cpu, stride) ) {
+        for (int i = 0; i < setting.MAX_PF_LAUNCH_S; i++)
+        {
+            uint64_t p_addr = (line_addr + stride[i].stride) << LOG2_BLOCK_SIZE;
+            uint64_t p_b_addr = (p_addr >> LOG2_BLOCK_SIZE);
+
+            //if (!shadow_cache_get(cpu, p_b_addr)
+            if (!latency_table_get(p_addr, cpu))
+            {
+                // Is in the RR
+                //bool find_rr = false;
+                //for (int ii = 0; ii < SIZE_RR && !find_rr; ii++) 
+                //    find_rr = ((p_addr == RR[cpu][ii]));
+                //if (find_rr) continue;
+
+                int fill_level = FILL_L1;
+                float mshr_load = ((float) MSHR.occupancy / (float) MSHR_SIZE) * 100;
+                //if ((p_addr >> LOG2_PAGE_SIZE) != (addr >> LOG2_PAGE_SIZE))
+                //    break;
+
+                // Level of prefetching depends son CONFIDENCE
+                if (stride[i].rpl == L1 && mshr_load < MSHR_LIMIT)
+                {
+                    fill_level = FILL_L1;
+                } else if (stride[i].rpl == L1 || stride[i].rpl == L2 
+                        || stride[i].rpl == L2R ){
+                    fill_level = FILL_L2;
+                } else
+                {
+                    // return;
+                    break;
+                }
+
+                if (prefetch_line(ip, addr, p_addr, fill_level, 1))
+                {
+                    if(fill_level == FILL_L1 && berti_launched == 0){
+                        prefetchers[cpu].insert_pct(stride[i].stride);
+                    }
+                    berti_launched++;
+                    total_prefetch++;
+                }
+            }
+        }
+    }
+
+
+
+    stat.ip_prefetch_nums+=berti_launched;
+    if(berti_launched!=0){
+        stat.ips[berti_launched]++;
+    }
+    
+
+    int page_launched = 0;
+    #ifdef PAGE_PREF
+    for ( auto& stride_info : page_offset_strides.conf_page_stride) {
+    
+
+        if( page_launched >= setting.PAGE_MAX_PF_LAUNCH_S  ){
+            break;
+        }
+
+        
+        uint64_t p_addr = (line_addr + stride_info.stride) << LOG2_BLOCK_SIZE;
+        uint64_t p_b_addr = (p_addr >> LOG2_BLOCK_SIZE);
+
+        if (!latency_table_get(p_addr, cpu)){
+            int fill_level = FILL_L1;
+            float mshr_load = ((float) MSHR.occupancy / (float) MSHR_SIZE) * 100;
+            if (stride_info.prefetch_level == L1 && mshr_load < MSHR_LIMIT){
+                fill_level = FILL_L1;
+            } else if (stride_info.prefetch_level == L2 ){ 
+                fill_level = FILL_L2;
+            } else  if ( stride_info.prefetch_level == L2R ){
+                fill_level = FILL_LLC;
+            }else{
+                break;
+            }
+
+            if (prefetch_line(ip, addr, p_addr, fill_level, 1)){
+                if(fill_level == FILL_L1 && berti_launched == 0){
+                    prefetchers[cpu].insert_pct(stride_info.stride);
+                }
+                // assert(0);
+                page_launched++;
+                total_prefetch++;
+            }
+
+        }
+    }
+    #endif
+    #ifdef OFFSET
+        for ( auto& stride_info : page_offset_strides.conf_offset_stride) {
+        
+
+            if( page_launched >= setting.PAGE_MAX_PF_LAUNCH_S  ){
+                break;
+            }
+
+            
+            uint64_t p_addr = (line_addr + stride_info.stride) << LOG2_BLOCK_SIZE;
+            uint64_t p_b_addr = (p_addr >> LOG2_BLOCK_SIZE);
+
+            if (!latency_table_get(p_addr, cpu)){
+                int fill_level = FILL_L1;
+                float mshr_load = ((float) MSHR.occupancy / (float) MSHR_SIZE) * 100;
+                if (stride_info.prefetch_level == L1 && mshr_load < MSHR_LIMIT){
+                    fill_level = FILL_L1;
+                } else if (stride_info.prefetch_level == L2 ){ 
+                    fill_level = FILL_L2;
+                } else  if ( stride_info.prefetch_level == L2R ){
+                    fill_level = FILL_LLC;
+                }else{
+                    break;
+                }
+
+                if (prefetch_line(ip, addr, p_addr, fill_level, 1)){
+                    if(fill_level == FILL_L1 && berti_launched == 0){
+                        prefetchers[cpu].insert_pct(stride_info.stride);
+                    }
+                    // assert(0);
+                    page_launched++;
+                    total_prefetch++;
+                }
+
+            }
+        }
+    #endif
+    #ifdef GLOBAL
+        for ( auto& stride_info : page_offset_strides.conf_global_stride) {
+        
+
+            if( page_launched >= setting.PAGE_MAX_PF_LAUNCH_S  ){
+                break;
+            }
+            uint64_t p_addr = (line_addr + stride_info.stride) << LOG2_BLOCK_SIZE;
+            uint64_t p_b_addr = (p_addr >> LOG2_BLOCK_SIZE);
+            if (!latency_table_get(p_addr, cpu) ){
+                int fill_level = FILL_L1;
+                float mshr_load = ((float) MSHR.occupancy / (float) MSHR_SIZE) * 100;
+                if (stride_info.prefetch_level == L1 && mshr_load < MSHR_LIMIT){
+                    fill_level = FILL_L1;
+                } else if (stride_info.prefetch_level == L2 ){ 
+                    fill_level = FILL_L2;
+                } else  if ( stride_info.prefetch_level == L2R ){
+                    fill_level = FILL_LLC;
+                }else{
+                    break;
+                }
+
+                if (prefetch_line(ip, addr, p_addr, fill_level, 1)){
+                    if(fill_level == FILL_L1 && berti_launched == 0){
+                        prefetchers[cpu].insert_pct(stride_info.stride);
+                    }
+                    // assert(0);
+                    page_launched++;
+                    total_prefetch++;
+                }
+
+            }
+        }
+    #endif
+    stat.page_prefetch_nums+=page_launched;
+    if(page_launched!=0){
+        stat.pages[page_launched]++;
+    }
+    
+
+    
+    uint64_t global_stride = prefetchers[cpu].get_pct();
+    // uint64_t global_stride =0;
+    if(global_stride!=0 && (page_launched  + berti_launched) < setting.ALL_MAX_PF){
+        int fill_level = -1;
+        // if(prefetchers[cpu].get_global_rate()> 0.9){
+        //     fill_level = FILL_L1;
+        // }
+        if(prefetchers[cpu].get_global_rate() > setting.GLOBAL_STRIDE_THRESHOLD ){
+             fill_level = FILL_L2;
+        } else if(prefetchers[cpu].get_global_rate() > setting.GLOBAL_STRIDE_THRESHOLD_LLC ){
+             fill_level = FILL_LLC;
+        } 
+        // if(fill_level != -1){
+            
+        //     uint64_t p_addr = (line_addr + global_stride) << LOG2_BLOCK_SIZE;
+        //     uint64_t p_b_addr = (p_addr >> LOG2_BLOCK_SIZE);
+        //     if (prefetch_line(ip, addr, p_addr, fill_level, 1)){
+        //         total_prefetch++;
+        //     }
+        // }
+
+
+
+    }
+    stat.global_prefetch_nums+= total_prefetch - (berti_launched+page_launched);
+
+    if(total_prefetch != 0){
+        stat.prefetch_times++;
+    }
+    
+    //统计是否有长序列
+    #ifdef PAGE
+        if(stat.berti_long_true == true || stat.page_long_true == true){
+            stat.all_long += 1;
+            stat.berti_long_true = false;
+            stat.page_long_true = false;
+        }
+
+        //统计conf
+        if(stat.berti_conf_true == true || stat.page_conf_true == true){
+            stat.all_conf += 1;
+            stat.berti_conf_true = false;
+            stat.page_conf_true = false;
+        }
+    #endif
+    #ifdef OFFSET
+        if(stat.berti_long_true == true || stat.offset_long_true == true){
+            stat.all_long += 1;
+            stat.berti_long_true = false;
+            stat.offset_long_true = false;
+        }
+
+        //统计conf
+        if(stat.berti_conf_true == true || stat.offset_conf_true == true){
+            stat.all_conf += 1;
+            stat.berti_conf_true = false;
+            stat.offset_conf_true = false;
+        }
+    #endif
+    #ifdef GLOBAL
+        if(stat.berti_long_true == true || stat.global_long_true == true){
+            stat.all_long += 1;
+            stat.berti_long_true = false;
+            stat.global_long_true = false;
+        }
+
+        //统计conf
+        if(stat.berti_conf_true == true || stat.global_conf_true == true){
+            stat.all_conf += 1;
+            stat.berti_conf_true = false;
+            stat.global_conf_true = false;
+        }
+    #endif
+}
+
+void CACHE::l1d_prefetcher_notify_about_dtlb_eviction(uint64_t addr, 
+        uint32_t set, uint32_t way, uint8_t prefetch, uint64_t evicted_addr, 
+        uint32_t metadata_in)
+{
+
+}
+
+void CACHE::l1d_prefetcher_cache_fill(uint64_t v_addr, uint64_t addr, 
+        uint32_t set, uint32_t way, uint8_t prefetch, uint64_t v_evicted_addr, 
+        uint64_t evicted_addr, uint32_t metadata_in)
+{
+    uint64_t line_addr = (v_addr >> LOG2_BLOCK_SIZE); // Line addr
+    uint64_t line_evicted = (v_evicted_addr >> LOG2_BLOCK_SIZE); // Line addr
+
+    // Remove @ from latency table
+    uint64_t tag     = latency_table_get_ip(line_addr, cpu);
+    uint64_t cycle   = latency_table_get(line_addr, cpu);
+    uint64_t latency = latency_table_del(line_addr, cpu);
+
+    if (latency > LAT_MASK) latency = 0;
+
+    // Add to the shadow cache
+    shadow_cache_add(cpu, set, way, line_addr, prefetch, latency);
+
+    if (latency != 0 && !prefetch)
+    {
+        find_and_update(cpu, latency, tag, cycle, line_addr);
+        prefetchers[cpu].cache_fill(cpu, line_addr, latency);
+    }
+
+    //for (int ii = 0; ii < SIZE_RR; ii++) 
+    //{
+    //    if (RR[cpu][ii] == v_evicted_addr)
+    //    {
+    //        RR[cpu][ii] = 0;
+    //    }
+    //}
+}
+
+void CACHE::l1d_prefetcher_final_stats()
+{
+    cout << "* CPU " << "0" << " ROI ip prefetch number: " << stat.ip_prefetch_nums << endl;
+    cout << "* CPU " << "0" << " ROI page prefetch number: " << stat.page_prefetch_nums << endl;
+    cout << "* CPU " << "0" << " ROI global prefetch number: " << stat.global_prefetch_nums << endl;
+    cout << "* CPU " << "0" << " ROI prefetch times: " << stat.prefetch_times << endl;
+
+    int maxIndex = 0;
+    int maxValue = stat.ips[0];
+
+
+    cout << "* CPU " << "0" << " ROI ip prefetch degree: " << stat.get_vector_max(stat.ips) << endl;
+
+    cout << "* CPU " << "0" << " ROI page prefetch degree: " << stat.get_vector_max(stat.pages) << endl;
+
+    cout << "* CPU " << "0" << " ROI mshr occupancy: " << (stat.mshr_occupancy) << endl;
+    cout << "* CPU " << "0" << " ROI access times: " << (stat.access_times) << endl;
+
+    cout << "* CPU " << "0" << "berti:" << stat.berti_long<<" "<<stat.berti_get<<" "<<stat.berti_access<<" "<<stat.berti_conf<<std::endl;
+    #ifdef PAGE
+        cout << "* CPU " << "0" << "page:" << stat.page_long<<" "<<stat.page_get<<" "<<stat.page_access<<" "<<stat.page_conf<<std::endl;
+    #endif
+    #ifdef OFFSET
+        cout << "* CPU " << "0" << "page:" << stat.offset_long<<" "<<stat.offset_get<<" "<<stat.offset_access<<" "<<stat.offset_conf<<std::endl;
+    #endif
+    #ifdef GLOBAL
+        cout << "* CPU " << "0" << "page:" << stat.global_long<<" "<<stat.global_get<<" "<<stat.global_access<<" "<<stat.global_conf<<std::endl;
+    #endif
+    cout << "* CPU " << "0" << "all:" << stat.all_long << " "<<stat.all_conf<<std::endl;
+}
+
+
+
+
+
+
+
+

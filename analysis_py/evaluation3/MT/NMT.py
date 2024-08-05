@@ -21,13 +21,13 @@ fontsizes=7
 legends={"ipcp_isca2020":"IPCP",
          "mlop_dpc3":"MLOP",
          "vberti":"Berti",
-         "vberti2":"Berti(0.2)",
+         "vberti20":"Berti(0.2)",
          "hyperion_hpc_2table_UTBh1_buffer8_10":"Hyperion",
          "bingo_dpc3":"Bingo",
          "ppf":'SPP-PPF'}
 
 hatches = ['//////','','\\\\\\\\\\', '//////','','\\\\\\\\\\',  '', '...','\\\\\\\\\\'] #'xxxxx',
-colors = ['#FEB3AE','#73bad6','#CD5C5C',"#bdbebd",'#0E5378',"#0E5378",'#ef4143','#bd3752','#c4323f']
+colors = ['#FEB3AE','#73bad6','#CD5C5C','#0E5378',"#0E5378",'#ef4143','#bd3752','#c4323f']
 # colors = ['#FEB3AE','#73bad6','#CD5C5C','#CD5C5C','#0E5378',"#0E5378",'#ef4143','#bd3752','#c4323f']
 
 
@@ -97,12 +97,12 @@ if __name__ == "__main__":
                     color=colors[i],      # 填充颜色
                     linewidth=0.75,zorder=3)
                 legend_patch.append(Patch(facecolor=colors[i], edgecolor='none',label=legends[prefs[i]]))
-            if(i==3):
-                num = 0
-                for data_berti2 in data_all[i,0:len(traces)] :
-                    if(data_berti2 != data_all[i,0:len(traces)][1]):
-                        ax.text(num + bar_width * i - 0.2, 2.02,format(data_berti2,'.2f'),fontsize = fontsizes-1)
-                    num = num + 1
+            # if(i==3):
+            #     num = 0
+            #     for data_berti2 in data_all[i,0:len(traces)] :
+            #         if(data_berti2 != data_all[i,0:len(traces)][1]):
+            #             ax.text(num + bar_width * i - 0.2, 2.02,format(data_berti2,'.2f'),fontsize = fontsizes-1)
+            #         num = num + 1
 
 
             # 计算x轴刻度的位置
@@ -132,7 +132,7 @@ if __name__ == "__main__":
             ax.set_yticklabels([f'{item}' for item in y_ticks1], fontsize=fontsizes)
 
             ax.set_ylabel("NMT", fontsize=fontsizes)
-            ax.legend(handles=legend_patch,loc='upper center', bbox_to_anchor=(0.5, 1.50), ncol=5, fontsize=fontsizes,
+            ax.legend(handles=legend_patch,loc='upper center', bbox_to_anchor=(0.5, 1.40), ncol=5, fontsize=fontsizes,
              # y 参数控制标题的位置
         handlelength=1.2,     # 控制图例句柄的长度
         handletextpad=0.2,  # 控制图例句柄和文本之间的间距
@@ -143,6 +143,8 @@ if __name__ == "__main__":
 
         plt.savefig(f'{figure_res}/NMT.png',dpi=800, format="png", bbox_inches='tight') 
         plt.savefig(f'{figure_res}/NMT.pdf',dpi=800, format="pdf", bbox_inches='tight') 
+        plt.savefig(f'{figure_res}/NMT.eps',dpi=800, format="eps", bbox_inches='tight') 
+
         plt.close()   
 
         

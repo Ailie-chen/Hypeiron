@@ -33,7 +33,8 @@ dic_suite2={
     '4suites':"Geomean/Average"
 }
 metrics=['L1D Accuracy','L2C Accuracy','L1D Coverage','L2C Coverage','LLC Coverage']
-legends={"ipcp_isca2020":"IPCP",
+legends={"no":"no",
+        "ipcp_isca2020":"IPCP",
          "mlop_dpc3":"MLOP",
          "vberti":"Berti",
          "hyperion_hpc_2table_UTBh1_buffer8_10":"Hyperion",
@@ -273,6 +274,7 @@ if __name__ == "__main__":
 
         plt.savefig(f'{figure_res}/L1D_AC.png',dpi=800, format="png", bbox_inches='tight') 
         plt.savefig(f'{figure_res}/L1D_AC.pdf',dpi=800, format="pdf", bbox_inches='tight') 
+        plt.savefig(f'{figure_res}/L1D_AC.eps',dpi=800, format="eps", bbox_inches='tight')
         plt.close()   
 
         

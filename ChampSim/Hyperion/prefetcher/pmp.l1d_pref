@@ -1,0 +1,1192 @@
+#include "vbertim.h"
+#include <sstream>
+#include <iostream> //reocrd
+#include <fstream>//record
+
+#include <bits/stdc++.h>
+#include <mutex> //atom ops
+#include <unordered_map>
+#include <unordered_set>
+#include <cstdlib>
+bool spec_intructions_complete;
+void notify_prefetch(uint64_t addr, uint64_t tag, uint32_t cpu, uint64_t cycle)
+{
+}
+namespace PMP_PREF
+{
+    bool SUPPORT_VA = false;
+
+    #define PMP_DEBUG(x)
+    #define PMP_BOTTOM_BITS 6
+    #define PMP_PC_BITS 5
+    #define PMP_BACKOFF_TIMES 1
+
+    #define PMP_IN_REGION_BITS 12
+    #define PMP_OFFSET_BITS (PMP_IN_REGION_BITS - PMP_BOTTOM_BITS)
+    #define PMP_OFFSET_MASK ((1 << PMP_OFFSET_BITS) - 1)
+    #define __fine_offset(addr) (addr & PMP_OFFSET_MASK)
+    #define __coarse_offset(fine_offset) ((fine_offset) >> (LOG2_BLOCK_SIZE - PMP_BOTTOM_BITS))
+
+    #define START_CONF 0
+
+    #define PATTERN_DEGRADE_LEVEL 2
+
+    //一些基本操作的定义
+    #define ADD(x, MAX) (x = x >= MAX ? x : x + 1)
+    vector<int> pattern_convert(const vector<bool> &x) 
+    {
+        vector<int> pattern(x.size(), 0);
+        for (int i = 0; i < x.size(); i++) {
+            pattern[i] = (x[i] ? 1 : 0);
+        }
+        return pattern;
+    }
+
+    template <class T> vector<T> my_rotate(const vector<T> &x, int n)
+    {
+        vector<T> y;
+        int len = x.size();
+        if (len == 0)
+            return y;
+        n = n % len;
+        for (int i = 0; i < len; i += 1)
+            y.push_back(x[(i - n + len) % len]);
+        return y;
+    }
+
+    template <class T> string pattern_to_string(const vector<T> &pattern) {
+        ostringstream oss;
+        for (unsigned i = 0; i < pattern.size(); i += 1)
+            oss << int(pattern[i]) << " ";
+        return oss.str();
+    }
+
+    uint64_t hash_index(uint64_t key, int index_len) 
+    {
+        if (index_len == 0)
+            return key;
+        for (uint64_t tag = (key >> index_len); tag > 0; tag >>= index_len)
+            key ^= tag & ((1 << index_len) - 1);
+        return key;
+    }
+
+    uint64_t pattern_to_int(const vector<bool> &pattern)
+    {
+        uint64_t result = 0;
+        for (auto v : pattern)
+        {
+            result <<= 1;
+            result |= int(v);
+        }
+        return result;
+    }
+
+
+    vector<bool> pattern_degrade(const vector<bool> &x, int level) 
+    {
+        vector<bool> res(x.size()/level, false);
+        for (int i = 0; i < x.size(); i++) {
+            res[i/level] = res[i/level] || x[i];
+        }
+        return res;
+    }
+
+    int count_bits(uint64_t a) 
+    {
+        int res = 0;
+        for (int i = 0; i < 64; i++)
+            if ((a >> i) & 1)
+                res++;
+        return res;
+    }
+
+    int count_bits(const vector<bool> &x) 
+    {
+        int count = 0;
+        for (auto b: x) {
+            count += b;
+        } 
+        return count;
+    }
+
+
+
+    //关于cache的定义
+    class Table {
+        public:
+            Table(int width, int height) : width(width), height(height), cells(height, vector<string>(width)) {}
+
+            void set_row(int row, const vector<string> &data, int start_col = 0) {
+                // assert(data.size() + start_col == this->width);
+                for (unsigned col = start_col; col < this->width; col += 1)
+                    this->set_cell(row, col, data[col]);
+            }
+
+            void set_col(int col, const vector<string> &data, int start_row = 0) {
+                // assert(data.size() + start_row == this->height);
+                for (unsigned row = start_row; row < this->height; row += 1)
+                    this->set_cell(row, col, data[row]);
+            }
+
+            void set_cell(int row, int col, string data) {
+                // assert(0 <= row && row < (int)this->height);
+                // assert(0 <= col && col < (int)this->width);
+                this->cells[row][col] = data;
+            }
+
+            void set_cell(int row, int col, double data) {
+                ostringstream oss;
+                oss << setw(11) << fixed << setprecision(8) << data;
+                this->set_cell(row, col, oss.str());
+            }
+
+            void set_cell(int row, int col, int64_t data) {
+                ostringstream oss;
+                oss << setw(11) << std::left << data;
+                this->set_cell(row, col, oss.str());
+            }
+
+            void set_cell(int row, int col, int data) { this->set_cell(row, col, (int64_t)data); }
+
+            void set_cell(int row, int col, uint64_t data) {
+                ostringstream oss;
+                oss << "0x" << setfill('0') << setw(16) << hex << data;
+                this->set_cell(row, col, oss.str());
+            }
+
+            /**
+            * @return The entire table as a string
+            */
+            string to_string() {
+                vector<int> widths;
+                for (unsigned i = 0; i < this->width; i += 1) {
+                    int max_width = 0;
+                    for (unsigned j = 0; j < this->height; j += 1)
+                        max_width = max(max_width, (int)this->cells[j][i].size());
+                    widths.push_back(max_width + 2);
+                }
+                string out;
+                out += Table::top_line(widths);
+                out += this->data_row(0, widths);
+                for (unsigned i = 1; i < this->height; i += 1) {
+                    out += Table::mid_line(widths);
+                    out += this->data_row(i, widths);
+                }
+                out += Table::bot_line(widths);
+                return out;
+            }
+
+            string data_row(int row, const vector<int> &widths) {
+                string out;
+                for (unsigned i = 0; i < this->width; i += 1) {
+                    string data = this->cells[row][i];
+                    data.resize(widths[i] - 2, ' ');
+                    out += " | " + data;
+                }
+                out += " |\n";
+                return out;
+            }
+
+            static string top_line(const vector<int> &widths) { return Table::line(widths, "┌", "┬", "┐"); }
+
+            static string mid_line(const vector<int> &widths) { return Table::line(widths, "├", "┼", "┤"); }
+
+            static string bot_line(const vector<int> &widths) { return Table::line(widths, "└", "┴", "┘"); }
+
+            static string line(const vector<int> &widths, string left, string mid, string right) {
+                string out = " " + left;
+                for (unsigned i = 0; i < widths.size(); i += 1) {
+                    int w = widths[i];
+                    for (int j = 0; j < w; j += 1)
+                        out += "─";
+                    if (i != widths.size() - 1)
+                        out += mid;
+                    else
+                        out += right;
+                }
+                return out + "\n";
+            }
+
+        private:
+            unsigned width;
+            unsigned height;
+            vector<vector<string>> cells;
+    };
+
+
+    template <class T> class SetAssociativeCache {
+        public:
+            class Entry {
+            public:
+                uint64_t key;
+                uint64_t index;
+                uint64_t tag;
+                bool valid;
+                T data;
+            };
+
+            SetAssociativeCache(int size, int num_ways, int debug_level = 0)
+                : size(size), num_ways(num_ways), num_sets(size / num_ways), entries(num_sets, vector<Entry>(num_ways)),
+                cams(num_sets, unordered_map<uint64_t, int>(num_ways)), debug_level(debug_level) {
+                // assert(size % num_ways == 0);
+                for (int i = 0; i < num_sets; i += 1)
+                    for (int j = 0; j < num_ways; j += 1) 
+                        entries[i][j].valid = false;
+                /* calculate `index_len` (number of bits required to store the index) */
+                for (int max_index = num_sets - 1; max_index > 0; max_index >>= 1)
+                    this->index_len += 1;
+            }
+
+            /**
+            * Invalidates the entry corresponding to the given key.
+            * @return A pointer to the invalidated entry
+            */
+            Entry *erase(uint64_t key) {
+                Entry *entry = this->find(key);
+                uint64_t index = key % this->num_sets;
+                uint64_t tag = key / this->num_sets;
+                auto &cam = cams[index];
+                int num_erased = cam.erase(tag);
+                if (entry)
+                    entry->valid = false;
+                // assert(entry ? num_erased == 1 : num_erased == 0);
+                return entry;
+            }
+
+            /**
+            * @return The old state of the entry that was updated
+            */
+            Entry insert(uint64_t key, const T &data) {
+                Entry *entry = this->find(key);
+                if (entry != nullptr) {
+                    Entry old_entry = *entry;
+                    entry->data = data;
+                    return old_entry;
+                }
+                uint64_t index = key % this->num_sets;
+                uint64_t tag = key / this->num_sets;
+                vector<Entry> &set = this->entries[index];
+                int victim_way = -1;
+                for (int i = 0; i < this->num_ways; i += 1)
+                    if (!set[i].valid) {
+                        victim_way = i;
+                        break;
+                    }
+                if (victim_way == -1) {
+                    victim_way = this->select_victim(index);
+                }
+                Entry &victim = set[victim_way];
+                Entry old_entry = victim;
+                victim = {key, index, tag, true, data};
+                auto &cam = cams[index];
+                if (old_entry.valid) {
+                    int num_erased = cam.erase(old_entry.tag);
+                    // assert(num_erased == 1);
+                }
+                cam[tag] = victim_way;
+                return old_entry;
+            }
+
+            Entry *find(uint64_t key) {
+                uint64_t index = key % this->num_sets;
+                uint64_t tag = key / this->num_sets;
+                auto &cam = cams[index];
+                if (cam.find(tag) == cam.end())
+                    return nullptr;
+                int way = cam[tag];
+                Entry &entry = this->entries[index][way];
+                // assert(entry.tag == tag && entry.valid);
+                if (!entry.valid)
+                    return nullptr;
+                return &entry;
+            }
+
+            void flush() {
+                for (int i = 0; i < num_sets; i += 1) {
+                    cams[i].clear();
+                    for (int j = 0; j < num_ways; j += 1)
+                        entries[i][j].valid = false;
+                }
+            }
+
+            /**
+            * Creates a table with the given headers and populates the rows by calling `write_data` on all
+            * valid entries contained in the cache. This function makes it easy to visualize the contents
+            * of a cache.
+            * @return The constructed table as a string
+            */
+            string log(vector<string> headers) {
+                vector<Entry> valid_entries = this->get_valid_entries();
+                Table table(headers.size(), valid_entries.size() + 1);
+                table.set_row(0, headers);
+                for (unsigned i = 0; i < valid_entries.size(); i += 1)
+                    this->write_data(valid_entries[i], table, i + 1);
+                return table.to_string();
+            }
+
+            int get_index_len() { return this->index_len; }
+
+            void set_debug_level(int debug_level) { this->debug_level = debug_level; }
+
+        protected:
+            /* should be overriden in children */
+            virtual void write_data(Entry &entry, Table &table, int row) {}
+
+            /**
+            * @return The way of the selected victim
+            */
+            virtual int select_victim(uint64_t index) {
+                /* random eviction policy if not overriden */
+                return rand() % this->num_ways;
+            }
+
+            vector<Entry> get_valid_entries() {
+                vector<Entry> valid_entries;
+                for (int i = 0; i < num_sets; i += 1)
+                    for (int j = 0; j < num_ways; j += 1)
+                        if (entries[i][j].valid)
+                            valid_entries.push_back(entries[i][j]);
+                return valid_entries;
+            }
+
+            int size;
+            int num_ways;
+            int num_sets;
+            int index_len = 0; /* in bits */
+            vector<vector<Entry>> entries;
+            vector<unordered_map<uint64_t, int>> cams;
+            int debug_level = 0;
+    };
+
+    template <class T> class LRUSetAssociativeCache : public SetAssociativeCache<T> {
+        typedef SetAssociativeCache<T> Super;
+
+        public:
+            LRUSetAssociativeCache(int size, int num_ways, int debug_level = 0)
+                : Super(size, num_ways, debug_level), lru(this->num_sets, vector<uint64_t>(num_ways)) {}
+
+            void set_mru(uint64_t key) { *this->get_lru(key) = this->t++; }
+
+            void set_lru(uint64_t key) { *this->get_lru(key) = 0; }
+
+            void rp_promote(uint64_t key) {set_mru(key);}
+
+            void rp_insert(uint64_t key) {set_mru(key);}
+
+        protected:
+            /* @override */
+            int select_victim(uint64_t index) {
+                vector<uint64_t> &lru_set = this->lru[index];
+                return min_element(lru_set.begin(), lru_set.end()) - lru_set.begin();
+            }
+
+            uint64_t *get_lru(uint64_t key) {
+                uint64_t index = key % this->num_sets;
+                uint64_t tag = key / this->num_sets;
+                // assert(this->cams[index].count(tag) == 1);
+                int way = this->cams[index][tag];
+                return &this->lru[index][way];
+            }
+
+            vector<vector<uint64_t>> lru;
+            uint64_t t = 1;
+    };
+
+    template <class T> class SRRIPSetAssociativeCache : public SetAssociativeCache<T> {
+        typedef SetAssociativeCache<T> Super;
+
+        public:
+            SRRIPSetAssociativeCache(int size, int num_ways, int debug_level = 0, int max_rrpv = 3)
+                : Super(size, num_ways, debug_level), rrpv(this->num_sets, vector<uint64_t>(num_ways)), 
+                max_rrpv(max_rrpv) {}
+
+                    void rp_promote(uint64_t key) {*this->get_rrpv(key) = 0;}
+
+                    void rp_insert(uint64_t key) {*this->get_rrpv(key) = 2;}
+
+        protected:
+            /* @override */
+            int select_victim(uint64_t index) {
+                vector<uint64_t> &rrpv_set = this->rrpv[index];
+                for (;;) {
+                    for (int i = 0; i < this->num_ways; i++) {
+                        if (rrpv_set[i] >= max_rrpv) {
+                            return i;
+                        }
+                    }
+                    aging(index);
+                } 
+            }
+
+            uint64_t *get_rrpv(uint64_t key) {
+                uint64_t index = key % this->num_sets;
+                uint64_t tag = key / this->num_sets;
+                // assert(this->cams[index].count(tag) == 1);
+                int way = this->cams[index][tag];
+                return &this->rrpv[index][way];
+            }
+        private:
+            void aging(uint64_t index) {
+                vector<uint64_t> &rrpv_set = this->rrpv[index];
+                for (auto &r:rrpv_set) {
+                    ADD(r, max_rrpv);
+                }
+            }
+
+            vector<vector<uint64_t>> rrpv;
+            int max_rrpv;
+    };
+
+
+    //功能表的定义
+    class FilterTableData
+    {
+        public:
+            int offset;
+            uint64_t pc;
+    };
+
+    #define FT_CACHE_TYPE SRRIPSetAssociativeCache
+
+    class FilterTable : public FT_CACHE_TYPE<FilterTableData>
+    {
+        typedef FT_CACHE_TYPE<FilterTableData> Super;
+
+        public:
+            FilterTable(int size, int debug_level = 0, int num_ways = 16) : Super(size, num_ways)
+            {
+                if (this->debug_level >= 1)
+                    cerr << "FilterTable::FilterTable(size=" << size << ", debug_level=" << debug_level
+                        << ", num_ways=" << num_ways << ")" << dec << endl;
+            }
+
+            Entry *find(uint64_t region_number)
+            {
+                if (this->debug_level >= 2)
+                    cerr << "FilterTable::find(region_number=0x" << hex << region_number << ")" << dec << endl;
+                uint64_t key = this->build_key(region_number);
+                Entry *entry = Super::find(key);
+                if (!entry)
+                {
+                    if (this->debug_level >= 2)
+                        cerr << "[FilterTable::find] Miss!" << dec << endl;
+                    return nullptr;
+                }
+                if (this->debug_level >= 2)
+                    cerr << "[FilterTable::find] Hit!" << dec << endl;
+                Super::rp_promote(key);
+                return entry;
+            }
+
+            void insert(uint64_t region_number, int offset, uint64_t pc)
+            {
+                if (this->debug_level >= 2)
+                    cerr << "FilterTable::insert(region_number=0x" << hex << region_number 
+                        << ", offset=" << dec << offset << ")" << dec << endl;
+                uint64_t key = this->build_key(region_number);
+                Super::insert(key, {offset, pc});
+                Super::rp_insert(key);
+            }
+
+            Entry *erase(uint64_t region_number)
+            {
+                uint64_t key = this->build_key(region_number);
+                return Super::erase(key);
+            }
+
+            string log()
+            {
+                vector<string> headers({"Region", "Offset"});
+                return Super::log(headers);
+            }
+
+        private:
+            void write_data(Entry &entry, Table &table, int row)
+            {
+                uint64_t key = hash_index(entry.key, this->index_len);
+                table.set_cell(row, 0, key);
+                table.set_cell(row, 1, entry.data.offset);
+            }
+
+            uint64_t build_key(uint64_t region_number)
+            {
+                uint64_t key = region_number & ((1ULL << 37) - 1);
+                return hash_index(key, this->index_len);
+            }
+    };
+
+    class AccumulationTableData
+    {
+        public:
+            int offset;
+            uint64_t pc;
+            vector<bool> pattern;
+    };
+
+    #define AT_CACHE_TYPE LRUSetAssociativeCache
+    class AccumulationTable : public AT_CACHE_TYPE<AccumulationTableData>
+    {
+        typedef AT_CACHE_TYPE<AccumulationTableData> Super;
+
+        public:
+            AccumulationTable(int size, int pattern_len, int debug_level = 0, int num_ways = 16)
+                : Super(size, num_ways), pattern_len(pattern_len)
+            {
+                if (this->debug_level >= 1)
+                    cerr << "AccumulationTable::AccumulationTable(size=" << size << ", pattern_len=" << pattern_len
+                        << ", debug_level=" << debug_level << ", num_ways=" << num_ways << ")" << dec << endl;
+            }
+
+            bool set_pattern(uint64_t region_number, int offset)
+            {
+                if (this->debug_level >= 2)
+                    cerr << "AccumulationTable::set_pattern(region_number=0x" << hex << region_number << ", offset=" << dec
+                        << offset << ")" << dec << endl;
+                uint64_t key = this->build_key(region_number);
+                Entry *entry = Super::find(key);
+                if (!entry)
+                {
+                    if (this->debug_level >= 2)
+                        cerr << "[AccumulationTable::set_pattern] Not found!" << dec << endl;
+                    return false;
+                }
+                entry->data.pattern[offset] = true;
+                Super::rp_promote(key);
+                if (this->debug_level >= 2)
+                    cerr << "[AccumulationTable::set_pattern] OK!" << dec << endl;
+                return true;
+            }
+
+            Entry insert(uint64_t region_number, uint64_t pc, int offset)
+            {
+                if (this->debug_level >= 2)
+                    cerr << "AccumulationTable::insert(region_number=0x" << hex << region_number
+                        << ", offset=" << dec << offset << dec << endl;
+                uint64_t key = this->build_key(region_number);
+                vector<bool> pattern(this->pattern_len, false);
+                pattern[__coarse_offset(offset)] = true;
+                Entry old_entry = Super::insert(key, {offset, pc, pattern});
+                Super::rp_insert(key);
+                return old_entry;
+            }
+
+            Entry *erase(uint64_t region_number)
+            {
+                uint64_t key = this->build_key(region_number);
+                return Super::erase(key);
+            }
+
+            string log()
+            {
+                vector<string> headers({"Region", "Offset", "Pattern"});
+                return Super::log(headers);
+            }
+
+        private:
+            void write_data(Entry &entry, Table &table, int row)
+            {
+                uint64_t key = hash_index(entry.key, this->index_len);
+                table.set_cell(row, 0, key);
+                table.set_cell(row, 1, entry.data.offset);
+                table.set_cell(row, 2, pattern_to_string(entry.data.pattern));
+            }
+
+            uint64_t build_key(uint64_t region_number)
+            {
+                uint64_t key = region_number & ((1ULL << 37) - 1);
+                return hash_index(key, this->index_len);
+            }
+
+            int pattern_len;
+    };
+
+
+    class OffsetPatternTableData
+    {
+        public:
+            vector<int> pattern;
+    };
+
+    class OffsetPatternTable : public LRUSetAssociativeCache<OffsetPatternTableData>
+    {
+        typedef LRUSetAssociativeCache<OffsetPatternTableData> Super;
+
+        public:
+            OffsetPatternTable(int size, int pattern_len, int tag_size,
+                            int num_ways = 16, int max_conf = 32, 
+                            int debug_level = 0, int cpu = 0)
+                : Super(size, num_ways, debug_level), pattern_len(pattern_len), tag_size(tag_size),
+                max_conf(max_conf), cpu(cpu)
+            {
+                if (this->debug_level >= 1)
+                    cerr << "OffsetPatternTable::OffsetPatternTable(size=" << size << ", pattern_len=" << pattern_len
+                        << ", tag_size=" << tag_size 
+                        << ", debug_level=" << debug_level << ", num_ways=" << num_ways << ")"
+                        << dec << endl;
+            }
+
+            void insert(uint64_t address, uint64_t pc, vector<bool> pattern, bool is_degrade)
+            {
+                if (this->debug_level >= 2)
+                    cerr << "OffsetPatternTable::insert(" << hex << "address=0x" << address
+                        << ", pattern=" << pattern_to_string(pattern) << ")" << dec << endl;
+                int offset = __coarse_offset(__fine_offset(address));
+                offset = is_degrade ? offset / PATTERN_DEGRADE_LEVEL : offset;
+                pattern = my_rotate(pattern, -offset);
+                uint64_t key = this->build_key(address, pc);
+                Entry *entry = Super::find(key);
+                assert(pattern[0]);
+                
+                if (entry)
+                {
+                    int max_value = 0;
+                    auto &stored_pattern = entry->data.pattern; 
+                    //在opt中找到对应的条目的位置之后，将其置信度加1，并找到最大的置信度
+                    for (int i = 0; i < this->pattern_len; i++)
+                    {
+                        pattern[i] ? ADD(stored_pattern[i], max_conf) : 0;
+                        if (i > 0 && max_value < stored_pattern[i]) {
+                            max_value = stored_pattern[i];
+                        }
+                    }
+                    
+                    //对齐将[0]位置的值置为最大值
+                    if (entry->data.pattern[0] == max_conf) {
+                        if (max_value < (1 << PMP_BACKOFF_TIMES)) {
+                            entry->data.pattern[0] = max_value;
+                        }
+                        else 
+                            for (auto &e : stored_pattern) {
+                                e >>= PMP_BACKOFF_TIMES;
+                            }
+                    }
+                    Super::rp_promote(key);
+                }
+                else
+                {
+                    Super::insert(key, {pattern_convert(pattern)});
+                    Super::rp_insert(key);
+                }
+            }
+
+            vector<OffsetPatternTableData> find(uint64_t pc, uint64_t block_number)
+            {
+                if (this->debug_level >= 2)
+                    cerr << "OffsetPatternTable::find(pc=0x" << hex << pc << ", address=0x" << block_number << ")" << dec << endl;
+                uint64_t key = this->build_key(block_number, pc);
+                Entry* entry = Super::find(key);
+                vector<OffsetPatternTableData> matches;
+                if (entry)
+                {
+                    auto &cur_pattern = entry->data;
+                    matches.push_back(cur_pattern);
+                }
+                return matches;
+            }
+
+            string log()
+            {
+                vector<string> headers({"Key", "Pattern"});
+                return Super::log(headers);
+            }
+
+        private:
+            void write_data(Entry &entry, Table &table, int row)
+            {
+
+                table.set_cell(row, 0, entry.key);
+                table.set_cell(row, 1, pattern_to_string(entry.data.pattern));
+            }
+
+            virtual uint64_t build_key(uint64_t address, uint64_t pc)
+            {
+                uint64_t offset = __fine_offset(address);
+                uint64_t key = offset & ((1 << this->tag_size) - 1);
+                return key;
+            }
+
+        protected:
+            const int pattern_len;
+            const int tag_size, cpu;
+            const int max_conf;
+    };
+
+    class PCPatternTable : public OffsetPatternTable {
+        public:
+            PCPatternTable(int size, int pattern_len, int tag_size,
+                    int num_ways = 16, int max_conf = 32, 
+                    int debug_level = 0, int cpu = 0) 
+                        : OffsetPatternTable(size, pattern_len, tag_size, num_ways, max_conf, debug_level,cpu) {}
+        private:
+            virtual uint64_t build_key(uint64_t address, uint64_t pc) override {
+                return hash_index(pc, this->index_len) & ((1 << this->tag_size) - 1);
+            }
+    };
+
+    class PrefetchBufferData
+    {
+        public:
+            vector<int> pattern;
+    };
+
+    #define PS_CACHE_TYPE LRUSetAssociativeCache
+    class PrefetchBuffer : public PS_CACHE_TYPE<PrefetchBufferData>
+    {
+        typedef PS_CACHE_TYPE<PrefetchBufferData> Super;
+
+        public:
+            PrefetchBuffer(int size, int pattern_len, int debug_level = 0, int num_ways = 16)
+                : Super(size, num_ways), pattern_len(pattern_len)
+            {
+                if (this->debug_level >= 1)
+                    cerr << "PrefetchBuffer::PrefetchBuffer(size=" << size << ", pattern_len=" << pattern_len
+                        << ", debug_level=" << debug_level << ", num_ways=" << num_ways << ")" << dec << endl;
+            }
+
+            void insert(uint64_t region_number, vector<int> pattern)
+            {
+                if (this->debug_level >= 2)
+                    cerr << "PrefetchBuffer::insert(region_number=0x" << hex << region_number
+                        << ", pattern=" << pattern_to_string(pattern) << ")" << dec << endl;
+                uint64_t key = this->build_key(region_number);
+                Super::insert(key, {pattern});
+                Super::rp_insert(key);
+            }
+
+            int prefetch(CACHE *cache, uint64_t block_address)
+            {
+                if (this->debug_level >= 2)
+                {
+                    cerr << "PrefetchBuffer::prefetch(cache=" << cache->NAME << ", block_address=0x" << hex << block_address
+                        << ")" << dec << endl;
+                    cerr << "[PrefetchBuffer::prefetch] " << cache->PQ.occupancy << "/" << cache->PQ.SIZE
+                        << " PQ entries occupied." << dec << endl;
+                    cerr << "[PrefetchBuffer::prefetch] " << cache->MSHR.occupancy << "/" << cache->MSHR.SIZE
+                        << " MSHR entries occupied." << dec << endl;
+                }
+                uint64_t base_addr = block_address << PMP_BOTTOM_BITS;
+                int region_offset = __coarse_offset(__fine_offset(block_address));
+                uint64_t region_number = block_address >> PMP_OFFSET_BITS;
+                uint64_t key = this->build_key(region_number);
+                Entry *entry = Super::find(key);
+                if (!entry)
+                {
+                    if (this->debug_level >= 2)
+                        cerr << "[PrefetchBuffer::prefetch] No entry found." << dec << endl;
+                    return 0;
+                }
+                Super::rp_promote(key);
+                int pf_issued = 0;
+                vector<int> &pattern = entry->data.pattern;
+                pattern[region_offset] = 0; 
+                int pf_offset;
+                PMP_DEBUG(cout << "[Prefetch Begin] base_addr " << hex << base_addr << ", " << dec;)
+                for (int d = 1; d < this->pattern_len; d += 1)
+                {
+                    for (int sgn = +1; sgn >= -1; sgn -= 2)
+                    {
+                        pf_offset = region_offset + sgn * d;
+                        if (0 <= pf_offset && pf_offset < this->pattern_len && pattern[pf_offset] > 0)
+                        {
+                            PMP_DEBUG(cout << pf_offset << " ";)
+                            uint64_t pf_address = (region_number * this->pattern_len + pf_offset) << LOG2_BLOCK_SIZE;
+                            if (cache->PQ.occupancy + cache->MSHR.occupancy < cache->MSHR.SIZE - 1 &&
+                                cache->PQ.occupancy < cache->PQ.SIZE)
+                            {
+                                int ok = cache->prefetch_line(0, base_addr, pf_address, pattern[pf_offset], 0);
+                                pf_issued += ok;
+                                pattern[pf_offset] = 0;
+                            }
+                            else
+                            {
+                                PMP_DEBUG(cout << endl;)
+                                return pf_issued;
+                            }
+                        }
+                    }
+                }
+                PMP_DEBUG(cout << endl;)
+                Super::erase(key);
+                return pf_issued;
+            }
+
+            string log()
+            {
+                vector<string> headers({"Region", "Pattern"});
+                return Super::log(headers);
+            }
+
+        private:
+            void write_data(Entry &entry, Table &table, int row)
+            {
+                uint64_t key = hash_index(entry.key, this->index_len);
+                table.set_cell(row, 0, key);
+                table.set_cell(row, 1, pattern_to_string(entry.data.pattern));
+            }
+
+            uint64_t build_key(uint64_t region_number)
+            {
+                uint64_t key = region_number;
+                return hash_index(key, this->index_len);
+            }
+
+            int pattern_len;
+    };
+
+    class PMP {
+    public:
+            PMP(int pattern_len, int offset_width, int opt_size, int opt_max_conf, int opt_ways, int pc_width, 
+                int ppt_size, int ppt_max_conf, int ppt_ways,int filter_table_size, int ft_way,
+                int accumulation_table_size, int at_way, int pf_buffer_size, int pf_buffer_way,
+                int debug_level = 0, int cpu = 0)
+                : pattern_len(pattern_len),
+                opt(opt_size, pattern_len, offset_width, opt_ways, opt_max_conf, debug_level, cpu),
+                ppt(ppt_size, pattern_len/PATTERN_DEGRADE_LEVEL, pc_width, ppt_ways, ppt_max_conf, debug_level, cpu),
+                filter_table(filter_table_size, debug_level, ft_way),
+                accumulation_table(accumulation_table_size, pattern_len, debug_level, at_way),
+                pf_buffer(pf_buffer_size, pattern_len, debug_level, pf_buffer_way), 
+                debug_level(debug_level), cpu(cpu)
+                {
+                if (this->debug_level >= 1)
+                    cerr << " PMP:: PMP(pattern_len=" << pattern_len 
+                        << ", filter_table_size=" << filter_table_size
+                        << ", accumulation_table_size=" << accumulation_table_size 
+                        << ", pf_buffer_size=" << pf_buffer_size
+                        << ", debug_level=" << debug_level << ")" << endl;
+                }
+
+
+            void access(uint64_t block_number, uint64_t pc)
+            {
+                if (this->debug_level >= 2)
+                    cerr << "[ PMP] access(block_number=0x" << hex << block_number << ", pc=0x" << pc << ")" << dec << endl;
+
+                uint64_t region_number = block_number >> PMP_OFFSET_BITS;
+                int region_offset = __fine_offset(block_number);
+                bool success = this->accumulation_table.set_pattern(region_number, __coarse_offset(region_offset));
+                if (success)
+                    return;
+                FilterTable::Entry *entry = this->filter_table.find(region_number);
+                if (!entry)
+                {
+
+                    this->filter_table.insert(region_number, region_offset, pc);
+                    vector<int> pattern = this->find_in_opt(pc, block_number);
+                    if (pattern.empty())
+                    {
+                        return;
+                    }
+
+                    this->pf_buffer.insert(region_number, pattern);
+                    return;
+                }
+                if (entry->data.offset != region_offset)
+                {
+                    uint64_t region_number = hash_index(entry->key, this->filter_table.get_index_len());
+                    AccumulationTable::Entry victim =
+                        this->accumulation_table.insert(region_number, entry->data.pc, entry->data.offset);
+                    this->accumulation_table.set_pattern(region_number, __coarse_offset(region_offset));
+                    this->filter_table.erase(region_number);
+                    if (victim.valid)
+                    {
+                        this->insert_in_opt(victim);
+                    }
+                }
+            }
+
+            void eviction(uint64_t block_number)
+            {
+                if (this->debug_level >= 2)
+                    cerr << "[ PMP] eviction(block_number=" << block_number << ")" << dec << endl;
+                uint64_t region_number = block_number / this->pattern_len;
+                this->filter_table.erase(region_number);
+                AccumulationTable::Entry *entry = this->accumulation_table.erase(region_number);
+                if (entry)
+                {
+                    this->insert_in_opt(*entry);
+                }
+            }
+
+            int prefetch(CACHE *cache, uint64_t block_number)
+            {
+                if (this->debug_level >= 2)
+                    cerr << " PMP::prefetch(cache=" << cache->NAME << ", block_number=" << hex << block_number << ")" << dec
+                        << endl;
+                int pf_issued = this->pf_buffer.prefetch(cache, block_number);
+                if (this->debug_level >= 2)
+                    cerr << "[ PMP::prefetch] pf_issued=" << pf_issued << dec << endl;
+                return pf_issued;
+            }
+
+            void set_debug_level(int debug_level)
+            {
+                this->filter_table.set_debug_level(debug_level);
+                this->accumulation_table.set_debug_level(debug_level);
+                this->opt.set_debug_level(debug_level);
+                this->ppt.set_debug_level(debug_level);
+                this->debug_level = debug_level;
+            }
+
+            void log()
+            {
+
+                cerr << "Filter table begin" << dec << endl;
+                cerr << this->filter_table.log();
+                cerr << "Filter table end" << endl;
+
+                cerr << "Accumulation table begin" << dec << endl;
+                cerr << this->accumulation_table.log();
+                cerr << "Accumulation table end" << endl;
+
+                cerr << "Offset pattern table begin" << dec << endl;
+                cerr << this->opt.log();
+                cerr << "Offset pattern table end" << endl;
+
+                cerr << "PC pattern table begin" << dec << endl;
+                cerr << this->ppt.log();
+                cerr << "PC pattern table end" << endl;
+
+                cerr << "Prefetch buffer begin" << dec << endl;
+                cerr << this->pf_buffer.log();
+                cerr << "Prefetch buffer end" << endl;
+            }
+
+        private:
+
+            vector<int> find_in_opt(uint64_t pc, uint64_t block_number)
+            {
+                if (this->debug_level >= 2)
+                {
+                    cerr << "[ PMP] find_in_opt(pc=0x" << hex << pc << ", address=0x" << block_number << ")" << dec << endl;
+                }
+                vector<OffsetPatternTableData> matches = this->opt.find(pc, block_number);
+                vector<OffsetPatternTableData> matches_pc = this->ppt.find(pc, block_number);
+                vector<int> pattern;
+                vector<int> pattern_pc;
+                vector<int> result_pattern(this->pattern_len, 0);
+                if (!matches.empty())
+                {
+                    pattern = this->vote(matches);
+                    pattern_pc = this->vote(matches_pc, true);
+                    if (pattern_pc.empty()) {
+                        for (int i = 0; i < this->pattern_len; i++) {
+                            result_pattern[i] = pattern[i] == FILL_L1 ? FILL_L2 : pattern[i] == FILL_L2 ? FILL_LLC : 0;
+                        }
+                    } else {
+                        for (int i = 0; i < this->pattern_len; i++) {
+                            if (pattern[i] == FILL_L1 && pattern_pc[i/PATTERN_DEGRADE_LEVEL] == FILL_L1) {
+                                result_pattern[i] = FILL_L1;
+                            } else if (pattern[i] == FILL_L1 || pattern_pc[i/PATTERN_DEGRADE_LEVEL] == FILL_L1 || 
+                                    pattern[i] == FILL_L2 || pattern_pc[i/PATTERN_DEGRADE_LEVEL] == FILL_L2) {
+                                result_pattern[i] = FILL_L2;
+                            }
+                        }
+                    }
+                } 
+
+                int offset = __coarse_offset(__fine_offset(block_number));
+                result_pattern = my_rotate(result_pattern, +offset);
+                return result_pattern;
+            }
+
+            void insert_in_opt(const AccumulationTable::Entry &entry)
+            {
+                uint64_t region_number = hash_index(entry.key, this->accumulation_table.get_index_len());
+                uint64_t address = (region_number << PMP_OFFSET_BITS) + entry.data.offset;
+                if (this->debug_level >= 2)
+                {
+                    cerr << "[ PMP] insert_in_opt(" << hex<< " address=0x" << address << ")" << dec << endl;
+                }
+                const vector<bool> &pattern = entry.data.pattern;
+                if (count_bits(pattern_to_int(pattern)) != 1) {
+                    this->opt.insert(address, entry.data.pc, pattern, false);
+                    this->ppt.insert(address, entry.data.pc, pattern_degrade(pattern, PATTERN_DEGRADE_LEVEL), true);
+                }
+            }
+
+            vector<int> vote(const vector<OffsetPatternTableData> &x, bool is_pc_opt=false)
+            {
+                if (this->debug_level >= 2)
+                    cerr << " PMP::vote(...)" << endl;
+                int n = x.size();
+                if (n == 0)
+                {
+                    if (this->debug_level >= 2)
+                        cerr << "[ PMP::vote] There are no voters." << endl;
+                    return vector<int>();
+                }
+
+                if (this->debug_level >= 2)
+                {
+                    cerr << "[ PMP::vote] Taking a vote among:" << endl;
+                    for (int i = 0; i < n; i += 1)
+                        cerr << "<" << setw(3) << i + 1 << "> " << pattern_to_string(x[i].pattern) << endl;
+                }
+                bool pf_flag = false;
+                int pattern_len = is_pc_opt? this->pattern_len / PATTERN_DEGRADE_LEVEL : this->pattern_len;
+                vector<int> res(pattern_len, 0);
+
+                for (int i = 0; i < pattern_len; i += 1)
+                {
+                    int cnt = 0;
+                    for (int j = 0; j < n; j += 1)
+                    {
+                        cnt += x[j].pattern[i];
+                    }
+                    double p = 1.0 * cnt / x[0].pattern[0];
+                    if (p > 1) {
+                        cout << "cnt:" << cnt << ",total:" << x[0].pattern[0] << endl;
+                        assert(p <= 1);
+                    }
+
+                    if (x[0].pattern[0] <= START_CONF) {
+                        break;
+                    }
+
+                    if (is_pc_opt) {
+                        if (p >= PC_L1D_THRESH)
+                            res[i] = FILL_L1;
+                        else if (p >= PC_L2C_THRESH)
+                            res[i] = FILL_L2;
+                        else if (p >= PC_LLC_THRESH)
+                            res[i] = FILL_LLC;
+                        else
+                            res[i] = 0;
+                    } else {
+                        if (p >= L1D_THRESH)
+                            res[i] = FILL_L1;
+                        else if (p >= L2C_THRESH)
+                            res[i] = FILL_L2;
+                        else if (p >= LLC_THRESH)
+                            res[i] = FILL_LLC;
+                        else
+                            res[i] = 0;
+                    }
+                }
+                if (this->debug_level >= 2)
+                {
+                    cerr << "<res> " << pattern_to_string(res) << endl;
+                }
+                
+                return res;
+            }
+
+            const double L1D_THRESH = 0.50;
+            const double L2C_THRESH = 0.150;
+            const double LLC_THRESH = 1; /* off */
+
+            const double PC_L1D_THRESH = 0.50;
+            const double PC_L2C_THRESH = 0.150;
+            const double PC_LLC_THRESH = 1; /* off */
+
+            /*======================*/
+
+            int pattern_len;
+            FilterTable filter_table;
+            AccumulationTable accumulation_table;
+            OffsetPatternTable opt;
+            PCPatternTable ppt;
+            PrefetchBuffer pf_buffer;
+            int debug_level = 0;
+            int cpu;
+    };
+
+    int DEBUG_LEVEL = 0;
+
+    vector< PMP> prefetchers;
+}
+
+void CACHE::l1d_prefetcher_initialize() 
+{   
+    const int PMP_PATTERN_LEN = (1 << PMP_IN_REGION_BITS)/BLOCK_SIZE;
+    const int PMP_FT_SIZE = 64;                             
+    const int PMP_FT_WAY = 8;                               
+    const int PMP_AT_SIZE = 32;                             
+    const int PMP_AT_WAY = 16;                              
+    const int PMP_OPT_WAYS = 1;                               
+    const int PMP_OPT_SIZE = (1 << PMP_OFFSET_BITS) * PMP_OPT_WAYS;
+    const int PMP_OFFSET_MAX_CONF = 32;
+    const int PMP_PPT_WAYS = 1;
+    const int PMP_PPT_SIZE = (1 << PMP_PC_BITS) * PMP_PPT_WAYS;
+
+    const int PMP_PC_MAX_CONF = 32;
+    const int PMP_PF_BUFFER_SIZE = 16;    
+    const int PMP_PF_BUFFER_WAY  = 16;
+
+    PMP_PREF::prefetchers = vector< PMP_PREF::PMP>(
+        NUM_CPUS,  PMP_PREF::PMP(PMP_PATTERN_LEN, 
+                        PMP_OFFSET_BITS, PMP_OPT_SIZE, PMP_OFFSET_MAX_CONF, PMP_OPT_WAYS, 
+                        PMP_PC_BITS, PMP_PPT_SIZE, PMP_PC_MAX_CONF, PMP_PPT_WAYS,
+                        PMP_FT_SIZE, PMP_FT_WAY, 
+                        PMP_AT_SIZE, PMP_AT_WAY, 
+                        PMP_PF_BUFFER_SIZE, PMP_PF_BUFFER_WAY, 
+                        PMP_PREF::DEBUG_LEVEL, cpu));
+
+}
+
+void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip, uint8_t cache_hit,
+        uint8_t type, uint8_t critical_ip_flag)
+{  
+    uint64_t line_addr = (addr >> LOG2_BLOCK_SIZE); // Line addr  
+    uint64_t pc = ip;
+    int pmp_pf_issued = 0;
+
+    if (PMP_PREF::DEBUG_LEVEL >= 2)
+    {
+        cerr << "CACHE::l1d_prefetcher_operate(addr=0x" << hex << addr << ", ip=0x" << ip << ", cache_hit=" << dec
+            << (int)cache_hit << ", type=" << (int)type << ")" << dec << endl;
+        cerr << "[CACHE::l1d_prefetcher_operate] CACHE{core=" << this->cpu << ", NAME=" << this->NAME << "}" << dec
+            << endl;
+    }
+
+    if (type != LOAD)
+        return;
+
+    uint64_t pmp_block_number = addr >> PMP_BOTTOM_BITS;
+
+    PMP_PREF::prefetchers[cpu].access(pmp_block_number, ip);
+
+    pmp_pf_issued = PMP_PREF::prefetchers[cpu].prefetch(this, pmp_block_number);
+
+    if (PMP_PREF::DEBUG_LEVEL >= 3)
+    {
+        PMP_PREF::prefetchers[cpu].log();
+        cerr << "=======================================" << dec << endl;
+    }
+
+    return;
+
+}
+
+void CACHE::l1d_prefetcher_notify_about_dtlb_eviction(uint64_t addr, 
+        uint32_t set, uint32_t way, uint8_t prefetch, uint64_t evicted_addr, 
+        uint32_t metadata_in)
+{
+
+}
+
+void CACHE::l1d_prefetcher_cache_fill(uint64_t v_addr, uint64_t addr, 
+        uint32_t set, uint32_t way, uint8_t prefetch, uint64_t v_evicted_addr, 
+        uint64_t evicted_addr, uint32_t metadata_in)
+{
+
+    uint64_t line_addr = (v_addr >> LOG2_BLOCK_SIZE); // Line addr
+    uint64_t line_evicted = (v_evicted_addr >> LOG2_BLOCK_SIZE); // Line addr
+
+    if (this->block[set][way].valid == 0)
+    return;
+
+    for (int i = 0; i < NUM_CPUS; i += 1)
+    {
+        if (!block[set][way].prefetch)
+            PMP_PREF::prefetchers[i].eviction(line_evicted);
+    }
+}
+
+void CACHE::l1d_prefetcher_final_stats()
+{
+
+    #ifdef PMP_ON
+         PMP_PREF::prefetchers[cpu].log();
+    #endif
+}

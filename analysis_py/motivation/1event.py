@@ -59,4 +59,6 @@ ax.legend(loc='upper center', bbox_to_anchor=(0.51, 1.313), ncol=2,fontsize=8,
         edgecolor='none'   )
 plt.savefig(os.path.join(figure_res,'1event.png'),dpi=300, format="png", bbox_inches='tight')
 plt.savefig(os.path.join(figure_res,'1event.pdf'),dpi=300, format="pdf", bbox_inches='tight')
+plt.savefig(os.path.join(figure_res,'1event.eps'),dpi=300, format="eps", bbox_inches='tight')
+
 

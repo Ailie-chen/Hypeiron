@@ -125,7 +125,7 @@ if __name__ == "__main__":
             ax.set_yticklabels([f'{item}' for item in y_ticks1], fontsize=fontsizes)
 
             ax.set_ylabel("SpeedUp", fontsize=fontsizes)
-            ax.legend(handles=legend_patch,loc='upper center', bbox_to_anchor=(0.5, 1.50), ncol=4, fontsize=fontsizes,
+            ax.legend(handles=legend_patch,loc='upper center', bbox_to_anchor=(0.5, 1.40), ncol=4, fontsize=fontsizes,
              # y 参数控制标题的位置
         handlelength=1.2,     # 控制图例句柄的长度
         handletextpad=0.2,  # 控制图例句柄和文本之间的间距
@@ -135,6 +135,7 @@ if __name__ == "__main__":
 
         plt.savefig(f'{figure_res}/4core.png',dpi=800, format="png", bbox_inches='tight') 
         plt.savefig(f'{figure_res}/4core.pdf',dpi=800, format="pdf", bbox_inches='tight') 
+        plt.savefig(f'{figure_res}/4core.eps',dpi=800, format="eps", bbox_inches='tight')
         plt.close()   
 
         

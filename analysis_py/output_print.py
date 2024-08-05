@@ -15,7 +15,7 @@ traces=["spec2k06","spec2k17","gap","parsec",'4suites']
 # metrics=['Prefetcher','IPC','IPCI',"L1D Accuracy","L1D Coverage", 'L2C Accuracy','L2C Coverage','LLC Coverage','LLC Accuracy','L1D MPKI','L2C MPKI','LLC MPKI']
 # metrics=['Prefetcher','L1D MPKI',"L1I MPKI","L1D AVERAGE MISS LATENCY","L1I AVERAGE MISS LATENCY"]
 
-metrics=['Prefetcher','IPCI']
+metrics=['Prefetcher','IPCI','L1D Prefetches']
 
 
 def print_for_metric(data,trace):
